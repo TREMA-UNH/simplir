@@ -98,7 +98,7 @@ streamMode =
                  <> help "background corpus statistics index")
       <*> option str (metavar "PATH" <> long "output" <> short 'o'
                       <> help "output file name")
-      <*> pure kbaDocuments  -- testDocuments
+      <*> pure warcDocuments -- kbaDocuments  -- testDocuments
       <*> inputFiles
 
 mergeCorpusStatsMode :: Parser (IO ())
@@ -115,7 +115,7 @@ corpusStatsMode =
       <$> optQueryFile
       <*> option (corpusStatsPaths <$> str) (metavar "FILE" <> long "output" <> short 'o'
                                              <> help "output file path")
-      <*> pure kbaDocuments  -- testDocuments
+      <*> pure warcDocuments -- kbaDocuments  -- testDocuments
       <*> inputFiles
 
 
@@ -144,7 +144,7 @@ newtype WikiId = WikiId Utf8.SmallUtf8
 readQueries :: QueryFile -> IO (M.Map QueryId (QueryNode FieldName))
 readQueries fname = do
     queries' <- either decodeError pure =<< Yaml.decodeFileEither fname
-    let queries = getQueries queries'
+    let queries = getQueries $ stripFreebaseIds queries'
     let allTerms = foldMap (S.fromList . collectFieldTerms FieldText) queries
     hPutStrLn stderr $ show (M.size queries)++" queries with "++show (S.size allTerms)++" unique terms"
     return queries
