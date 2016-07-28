@@ -56,6 +56,8 @@ import SimplIR.Types
 import SimplIR.Term as Term
 import SimplIR.DataSource as DataSource
 import SimplIR.BinaryFile as BinaryFile
+import qualified Data.Warc as Warc
+import qualified SimplIR.WarcDocSource as Warc
 import qualified BTree.File as BTree
 import SimplIR.TopK
 import qualified SimplIR.TrecStreaming as Kba
@@ -159,6 +161,33 @@ main :: IO ()
 main = do
     mode <- execParser $ info (helper <*> modes) fullDesc
     mode
+
+stripFreebaseIds :: Queries -> Queries
+stripFreebaseIds (Queries qs) = Queries $ M.fromList
+    [ (name, q')
+    | (name, q) <- M.toList qs
+    , Just q' <- pure $ go q
+    ]
+  where
+    go :: QueryNode FieldName -> Maybe (QueryNode FieldName)
+    go (RetrievalNode { field = FieldFreebaseIds }) = Nothing
+
+    go n@(RetrievalNode {})   = Just n
+
+    go n@(ScaleNode {..})
+      | Just x <- go child    = Just $ n { child = x }
+
+    go n@(ProductNode {..})
+      | not $ null xs         = Just $ n { children = xs }
+      where xs = mapMaybe go children
+
+    go n@(SumNode {..})
+      | not $ null xs         = Just $ n { children = xs }
+      where xs = mapMaybe go children
+
+    go n@(ConstNode {})       = Just n
+
+    go _                      = Nothing
 
 corpusStats :: QueryFile -> CorpusStatsPaths -> DocumentSource -> IO [DataSource] -> IO ()
 corpusStats queryFile output docSource readDocLocs = do
@@ -477,6 +506,17 @@ testDocuments dsrcs =
                 mapM_ yield docs
           ) dsrcs
 
+warcDocuments :: [DataSource]
+              -> Producer ((ArchiveName, DocumentName), T.Text) (SafeT IO) ()
+warcDocuments dsrcs =
+    mapM_ (\src -> do
+                liftIO $ hPutStrLn stderr $ show src
+                let warc = Warc.parseWarc (dataSource src)
+                    archive = getFilePath $ dsrcLocation src
+                Warc.produceRecords Warc.readRecord warc
+                    >-> Warc.decodeDocuments
+                    >-> P.P.map (\(docName, content) -> ((archive, docName), content))
+          ) dsrcs
 
 
 kbaDocuments :: [DataSource]
@@ -485,7 +525,8 @@ kbaDocuments dsrcs =
     mapM_ (\src -> do
                 liftIO $ hPutStrLn stderr $ show src
                 bs <- lift $ readKbaFile src
-                mapM_ (yield . (getFilePath $ dsrcLocation src,))
+                let archive = getFilePath $ dsrcLocation src
+                mapM_ (yield . (archive,))
                       (Kba.readItems $ BS.L.toStrict bs)
           ) dsrcs
     >-> P.P.mapFoldable
