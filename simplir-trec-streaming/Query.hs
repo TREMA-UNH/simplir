@@ -19,6 +19,8 @@ module Query
     , QueryNodeName(..)
     , FieldName(..)
     , RetrievalModel(..)
+    , QLSmoothing(..)
+    , qlSmoothing
     , WikiId(..)
       -- * Query tree
     , QueryNode(..)
@@ -27,8 +29,6 @@ module Query
     , kbaTokenise
     ) where
 
-import Data.Maybe (mapMaybe)
-import Control.Monad (guard)
 import Control.Applicative
 import Data.Foldable (fold, toList)
 import Data.Aeson
@@ -44,7 +44,7 @@ import Numeric.Log
 import SimplIR.Types (TokenOrPhrase(..), Position)
 import SimplIR.Term as Term
 import SimplIR.Tokenise
-import SimplIR.RetrievalModels.QueryLikelihood as QL
+import qualified SimplIR.RetrievalModels.QueryLikelihood as QL
 import qualified SimplIR.TrecStreaming.FacAnnotations as Fac
 import Parametric
 
@@ -54,8 +54,8 @@ newtype QueryId = QueryId Text
 newtype WikiId = WikiId Text
                deriving (Show, Eq, Ord, ToJSON, FromJSON)
 
-deriving instance ToJSON Score
-deriving instance FromJSON Score
+deriving instance ToJSON (Log Double)
+deriving instance FromJSON (Log Double)
 
 newtype Queries = Queries { getQueries :: M.Map QueryId (QueryNode FieldName) }
 
@@ -89,8 +89,46 @@ eqFieldName _ _ = Nothing
 deriving instance Show a => Show (FieldName a)
 deriving instance Eq (FieldName a)
 
+-- | A query likelihood smoothing model
+data QLSmoothing term
+    = Dirichlet (Parametric Double)
+    | JelinekMercer (Parametric Double) (Parametric Double)
+
+qlSmoothing :: QLSmoothing term
+            -> Parametric (QL.Distribution term -> QL.Smoothing term)
+qlSmoothing (Dirichlet mu) = QL.Dirichlet . realToFrac <$> mu
+qlSmoothing (JelinekMercer fgP bgP) = QL.JelinekMercer <$> alpha
+  where alpha :: Parametric (Log Double)
+        alpha = (\fg bg -> realToFrac $ fg / (fg + bg)) <$> fgP <*> bgP
+
+instance ToJSON (QLSmoothing term) where
+    toJSON (Dirichlet mu) = object [ "type" .= str "dirichlet", "mu" .= mu ]
+    toJSON (JelinekMercer fg bg) = object [ "type" .= str "jm", "alpha_foreground" .= fg, "alpha_background" .= bg ]
+
+instance FromJSON (QLSmoothing term) where
+    parseJSON = withObject "query likelihood smoothing method" $ \s -> do
+        smoothingType <-  s .: "type"
+        case smoothingType :: String of
+            "dirichlet" -> Dirichlet <$> s .: "mu"
+            "jm"        -> JelinekMercer <$> s .: "alpha_foreground"
+                                         <*> s .: "alpha_background"
+            _           -> fail $ "Unknown smoothing method "++smoothingType
+
 data RetrievalModel term
-    = QueryLikelihood (Parametric (QL.Distribution term -> QL.Smoothing term))
+    = QueryLikelihood (QLSmoothing term)
+
+instance ToJSON (RetrievalModel term) where
+    toJSON (QueryLikelihood smoothing) = object
+      [ "type" .= str "ql"
+      , "smoothing" .= smoothing
+      ]
+
+instance FromJSON (RetrievalModel term) where
+    parseJSON = withObject "retrieval model" $ \o -> do
+        modelType <- o .: "type"
+        case modelType of
+          "ql" -> QueryLikelihood <$> o .: "smoothing"
+          _  -> fail $ "Unknown retrieval model "++modelType
 
 data QueryNode field
     = ConstNode { value :: Parametric Double }
@@ -191,47 +229,6 @@ instance (FieldType field) => FromJSON (QueryNode field) where
               "scoring_model" -> retrievalNode
               _ -> fail "Unknown node type"
 
-collectFieldTerms :: FieldName term -> QueryNode FieldName -> [term]
-collectFieldTerms _ ConstNode {..}     = []
-collectFieldTerms f SumNode {..}       = foldMap (collectFieldTerms f) children
-collectFieldTerms f ProductNode {..}   = foldMap (collectFieldTerms f) children
-collectFieldTerms f ScaleNode {..}     = collectFieldTerms f child
-collectFieldTerms f RetrievalNode {..}
-  | Just Refl <- field `eqFieldName` f = map fst $ toList terms
-  | otherwise                          = []
-
-instance ToJSON (RetrievalModel term) where
-    toJSON (QueryLikelihood smoothing) = object
-      [ "type" .= str "ql"
-      , "smoothing" .= str undefined -- TODO
-        -- case smoothing of
-        --   Dirichlet mu _ -> object [ "type" .= "dirichlet"
-        --                            , "mu" .= mu
-        --                            ]
-        --   JelinekMercer alpha_f alpha_b -> object [ "type" .= "jm"
-        --                                           , "alpha_foreground" .= alpha_f
-        --                                           , "alpha_background" .= alpha_b
-        --                                           ]
-      ]
-
-instance FromJSON (RetrievalModel term) where
-    parseJSON = withObject "retrieval model" $ \o -> do
-        modelType <- o .: "type"
-        case modelType of
-          "ql" -> do
-              s <- o .: "smoothing"
-              smoothingType <-  s .: "type"
-              QueryLikelihood <$> case smoothingType :: String of
-                  "dirichlet" -> pure . Dirichlet <$> s .: "mu"
-                  "jm"        -> do
-                      fgP <- s .: "alpha_foreground" :: Aeson.Parser (Parametric Double)
-                      bgP <- s .: "alpha_background" :: Aeson.Parser (Parametric Double)
-                      let alpha :: Parametric (Log Double)
-                          alpha = (\fg bg -> realToFrac $ fg / (fg + bg)) <$> fgP <*> bgP
-                      pure (JelinekMercer <$> alpha)
-                  _           -> fail $ "Unknown smoothing method "++smoothingType
-          _  -> fail $ "Unknown retrieval model "++modelType
-
 instance (FieldType field) => ToJSON (QueryNode field) where
     toJSON (ConstNode {..}) = object
         [ "type"     .= str "constant"
@@ -282,3 +279,12 @@ kbaTokenise =
       | c `HS.member` chars = ' '
       | otherwise           = c
       where chars = HS.fromList "\t\n\r;\"&/:!#?$%()@^*+-,=><[]{}|`~_`"
+
+collectFieldTerms :: FieldName term -> QueryNode FieldName -> [term]
+collectFieldTerms _ ConstNode {..}     = []
+collectFieldTerms f SumNode {..}       = foldMap (collectFieldTerms f) children
+collectFieldTerms f ProductNode {..}   = foldMap (collectFieldTerms f) children
+collectFieldTerms f ScaleNode {..}     = collectFieldTerms f child
+collectFieldTerms f RetrievalNode {..}
+  | Just Refl <- field `eqFieldName` f = map fst $ toList terms
+  | otherwise                          = []
