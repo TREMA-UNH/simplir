@@ -516,7 +516,7 @@ warcDocuments dsrcs =
                     archive = getFilePath $ dsrcLocation src
                 leftoverProd <-
                         Warc.produceRecords Warc.readRecord warc
-                    >-> Warc.decodeDocuments
+                    >-> Warc.extractDocuments Warc.wetDocument
                     >-> P.P.map (\(docName, content) -> ((archive, docName), content))
 
                 leftovers <- lift $ P.BS.toLazyM $ leftoverProd >-> P.BS.take 256

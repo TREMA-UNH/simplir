@@ -2,11 +2,18 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ScopedTypeVariables
+#-}
 {-# LANGUAGE RankNTypes #-}
 
 module SimplIR.WarcDocSource
     ( readRecord
-    , decodeDocuments
+      -- * Extracting documents from WARC records
+    , extractDocuments
+      -- ** Extractors
+    , Extractor
+    , wetDocument
+    , warcDocument
     ) where
 
 import Control.Monad.Trans.Except
@@ -21,6 +28,8 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy.Char8 as BS.L
 import qualified Data.Map.Strict as M
 import qualified Data.Text as T
+import qualified Data.Text.Lazy as T.L
+import qualified Data.Text.Lazy.Encoding as T.L.E
 import qualified Data.Text.Encoding as T.E
 import qualified Data.Text.ICU.Convert as ICU
 
@@ -39,7 +48,7 @@ import qualified Network.HTTP.Parse as Http
 import Network.HTTP.Media
 import SimplIR.Types
 
-data MsgType = MsgResponse | MsgRequest
+data MsgType = MsgResponse | MsgRequest | MsgConversion
              deriving (Show, Eq, Ord, Bounded, Enum)
 
 readRecord :: Monad m
@@ -51,19 +60,29 @@ readRecord hdr prod = do
     yield (hdr, BS.L.fromChunks body)
     return rest
 
-decodeDocuments :: MonadIO m
-                => Pipe (RecordHeader, BS.L.ByteString) (DocumentName, T.Text) m r
-decodeDocuments =
-    mapFoldableM (runExceptT . decodeDocument)
+extractDocuments :: forall m r. MonadIO m
+                 => Extractor m
+                 -> Pipe (RecordHeader, BS.L.ByteString) (DocumentName, T.Text) m r
+extractDocuments extractor = mapFoldableM extract
   where
-    logError (docName, Right x)                  = return $ Just x
-    logError (docName, Left (LogMesg level msg)) = do log level $ "failed: "++msg
-                                                      return Nothing
+    extract = exceptT logError (return . Just) . extractor
+    logError (LogMesg level msg) = do liftIO $ putStrLn $ "failed: "++msg
+                                      return Nothing
 
-decodeDocument :: MonadIO m
-               => (RecordHeader, BS.L.ByteString)
-               -> ExceptT LogMesg m (DocumentName, T.Text)
-decodeDocument (hdr, content) = do
+type Extractor m = (RecordHeader, BS.L.ByteString) -> ExceptT LogMesg m (DocumentName, T.Text)
+
+wetDocument :: Monad m => Extractor m
+wetDocument (hdr, content) = do
+    recId   <- failWith (LogMesg WARN "failed to find record id")
+             $ hdr ^? recHeaders . Lens.each . Warc._WarcRecordId
+    let Warc.RecordId (Warc.Uri docUri) = recId
+        !docName = DocName $ Utf8.fromAscii docUri
+        decode = T.L.E.decodeUtf8
+    return (docName, T.L.toStrict $ decode content)
+
+-- | Extract raw documents in WARC @response@ records.
+warcDocument :: MonadIO m => Extractor m
+warcDocument (hdr, content) = do
     msgType <- failWith (LogMesg DEBUG "failed to find message type")
              $ recordHttpMsgType hdr
 
@@ -94,9 +113,10 @@ recordHttpMsgType hdr = do
     guard $ ctype `matches` ("application" // "http")
     msgtype <- "msgtype" `M.lookup` parameters ctype
     case CI.mk msgtype of
-        "response" -> pure MsgResponse
-        "request"  -> pure MsgRequest
-        a          -> mzero
+        "response"   -> pure MsgResponse
+        "request"    -> pure MsgRequest
+        "conversion" -> pure MsgConversion
+        a            -> mzero
 
 data LogMesg = LogMesg !LogLevel String
 

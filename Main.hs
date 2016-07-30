@@ -71,7 +71,7 @@ main = do
                 consumePostings
              $  void (Warc.produceRecords readRecord warc)
             >-> cat'                                          @(Warc.RecordHeader, BS.L.ByteString)
-            >-> decodeDocuments
+            >-> extractDocuments warcDocument
             >-> cat'                                          @(DocumentName, T.Text)
             >-> P.P.map (fmap cleanHtml)
             >-> cat'                                          @(DocumentName, T.Text)
