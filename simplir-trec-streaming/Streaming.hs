@@ -46,6 +46,7 @@ import           Pipes.Safe
 import qualified Pipes.Prelude as P.P
 import qualified Pipes.Text as P.T
 import qualified Pipes.Text.Encoding as P.T.E
+import qualified Pipes.ByteString as P.BS
 
 import Options.Applicative
 
@@ -513,9 +514,14 @@ warcDocuments dsrcs =
                 liftIO $ hPutStrLn stderr $ show src
                 let warc = Warc.parseWarc (dataSource src)
                     archive = getFilePath $ dsrcLocation src
-                Warc.produceRecords Warc.readRecord warc
+                leftoverProd <-
+                        Warc.produceRecords Warc.readRecord warc
                     >-> Warc.decodeDocuments
                     >-> P.P.map (\(docName, content) -> ((archive, docName), content))
+
+                leftovers <- lift $ P.BS.toLazyM $ leftoverProd >-> P.BS.take 256
+                unless (BS.L.null leftovers) $ do
+                    liftIO $ putStrLn $ "Unparseable data at end of "++show src++": "++show leftovers
           ) dsrcs
 
 
