@@ -2,6 +2,10 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -36,7 +40,8 @@ module Query
 import Control.Applicative
 import Data.Foldable (fold, toList)
 import Data.Monoid
-import Data.Aeson
+import Data.Aeson hiding (Bool)
+import qualified Data.Aeson as Json
 import qualified Data.Vector as V
 import qualified Data.Text as T
 import qualified Data.Map.Strict as M
@@ -62,7 +67,7 @@ newtype WikiId = WikiId Text
 deriving instance ToJSON Score
 deriving instance FromJSON Score
 
-newtype Queries = Queries { getQueries :: M.Map QueryId QueryNode }
+newtype Queries = Queries { getQueries :: M.Map QueryId (QueryNode 'RealNumber) }
 
 instance FromJSON Queries where
     parseJSON = withArray "queries" $ fmap (Queries . fold) . traverse query
@@ -162,94 +167,76 @@ instance ToJSON RetrievalModel where
         , "smoothing" .= smoothing
         ]
 
-data QueryNode = ConstNode { value :: Parametric Double }
-               | DropNode
-               | SumNode { name         :: Maybe QueryNodeName
-                         , children     :: [QueryNode]
-                         , recordOutput :: Maybe RecordedValueName
-                         }
-               | ProductNode { name         :: Maybe QueryNodeName
-                             , children     :: [QueryNode]
-                             , recordOutput :: Maybe RecordedValueName
-                             }
-               | ScaleNode { name         :: Maybe QueryNodeName
-                           , scalar       :: Parametric Double
-                           , child        :: QueryNode
-                           , recordOutput :: Maybe RecordedValueName
-                           }
-                 -- | A feature for learning-to-rank. The value of the child node is recorded as a feature and the
-                 -- weight is loaded from the parameter set. Both are identified by 'featureName'.
-               | FeatureNode { featureName  :: FeatureName
-                             , child        :: QueryNode
-                             }
-               | CondNode { predicateTerms   :: V.Vector (TokenOrPhrase Term)
-                          , predicateNegated :: Bool
-                          , trueChild        :: QueryNode
-                          , falseChild       :: QueryNode
-                          }
-               | forall term. (Show term, ToJSON term, FromJSON term) =>
-                 RetrievalNode { name           :: Maybe QueryNodeName
-                               , retrievalModel :: RetrievalModel
-                               , field          :: FieldName term
-                               , terms          :: V.Vector (term, Double)
-                               , recordOutput   :: Maybe RecordedValueName
-                               }
+data ValueType = RealNumber | LogNumber | Bool
 
-deriving instance Show QueryNode
+type family Rep (a :: ValueType) where
+    Rep 'RealNumber = Double
+    Rep 'LogNumber  = Log Double
+    Rep 'Bool       = Bool
 
-instance FromJSON QueryNode where
+data QueryNode (a :: ValueType) where
+    ConstNode
+      :: { value :: Parametric (Rep a) }
+      -> QueryNode a
+    DropNode
+      :: QueryNode a
+    SumNode
+      :: { name1        :: Maybe QueryNodeName
+         , children     :: [QueryNode a]
+         , recordOutput :: Maybe RecordedValueName
+         }
+      -> QueryNode a
+    ProductNode
+      :: { name1        :: Maybe QueryNodeName
+         , children     :: [QueryNode a]
+         , recordOutput :: Maybe RecordedValueName
+         }
+      -> QueryNode a
+    ScaleNode
+      :: { name1        :: Maybe QueryNodeName
+         , scalar       :: Parametric (Rep a)
+         , child        :: QueryNode a
+         , recordOutput :: Maybe RecordedValueName
+         }
+      -> QueryNode a
+    -- | A feature for learning-to-rank. The value of the child node is recorded as a feature and the
+    -- weight is loaded from the parameter set. Both are identified by 'featureName'.
+    FeatureNode
+      :: { featureName  :: FeatureName
+         , child        :: QueryNode a
+         }
+      -> QueryNode a
+    ContainsTerms
+      :: forall term. (Show term) =>
+         { containsTerms    :: V.Vector (TokenOrPhrase term)
+         , containsNegated  :: Bool
+         }
+      -> QueryNode 'Bool
+    CondNode
+      :: { predicate        :: QueryNode 'Bool
+         , trueChild        :: QueryNode a
+         , falseChild       :: QueryNode a
+         }
+      -> QueryNode a
+    RetrievalNode
+      :: forall term. (Show term, ToJSON term, FromJSON term) =>
+         { name2          :: Maybe QueryNodeName
+         , retrievalModel :: RetrievalModel
+         , field          :: FieldName term
+         , terms          :: V.Vector (term, Double)
+         , recordOutput2  :: Maybe RecordedValueName
+         }
+      -> QueryNode 'LogNumber
+
+name :: QueryNode score -> Maybe QueryNodeName
+name (RetrievalNode {name2=a}) = a
+name (ScaleNode {name1=a}) = a
+
+deriving instance Show (Rep a) => Show (QueryNode a)
+
+instance FromJSON (QueryNode 'LogNumber) where
     parseJSON = withObject "query node" $ \o ->
       let nodeName = fmap QueryNodeName <$> o .:? "name"
-
-          weightedTerm :: FromJSON term => Aeson.Value -> Aeson.Parser (term, Double)
-          weightedTerm val = weighted val <|> unweighted
-            where
-              unweighted = ((\x -> (x, 1)) <$> parseJSON val)
-                        <|> Aeson.typeMismatch "term" val
-              weighted = withObject "weighted term" $ \t ->
-                (,) <$> t .: "term" <*> t .: "weight"
-
-          -- TODO This seems a bit out of place
-          splitTerms :: T.Text -> Maybe (TokenOrPhrase Term)
-          splitTerms token =
-              case map (Term.fromText . fst) $ toList $ kbaTokenise token of
-                []    -> Nothing
-                [tok] -> Just (Token tok)
-                toks  -> Just (Phrase toks)
-
-          record :: Aeson.Parser (Maybe RecordedValueName)
-          record = do
-              v <- o .:? "record" .!= Bool False
-              case v of
-                Bool True   -> Just <$> o .: "name"
-                Bool False  -> return Nothing
-                String name -> return $ Just $ RecordedValueName name
-                _           -> fail $ "unknown value for 'record': "++show v
-
-          constNode = ConstNode <$> o .: "value"
-
-          aggregatorNode = do
-              op <- o .: "op"
-              case op :: String of
-                "product" -> ProductNode <$> nodeName <*> o .: "children" <*> record
-                "sum"     -> SumNode <$> nodeName <*> o .: "children" <*> record
-                _         -> fail "Unknown aggregator node type"
-
-          scaleNode = ScaleNode
-              <$> nodeName
-              <*> o .: "scalar"
-              <*> o .: "child"
-              <*> record
-
-          featureNode = FeatureNode
-              <$> o .: "name"
-              <*> o .: "child"
-
-          ifNode =
-              CondNode <$> o .: "terms"
-                       <*> o .:? "negated" .!= False
-                       <*> o .: "true_child"
-                       <*> o .: "false_child"
 
           retrievalNode = do
               fieldName <- o .: "field"
@@ -279,6 +266,59 @@ instance FromJSON QueryNode where
                                     <*> record
                   _             -> fail $ "Unknown field name "++fieldName
 
+instance FromJSON (QueryNode a) where
+    parseJSON = withObject "query node" $ \o ->
+      let nodeName = fmap QueryNodeName <$> o .:? "name"
+
+          weightedTerm :: FromJSON term => Aeson.Value -> Aeson.Parser (term, Double)
+          weightedTerm val = weighted val <|> unweighted
+            where
+              unweighted = ((\x -> (x, 1)) <$> parseJSON val)
+                        <|> Aeson.typeMismatch "term" val
+              weighted = withObject "weighted term" $ \t ->
+                (,) <$> t .: "term" <*> t .: "weight"
+
+          -- TODO This seems a bit out of place
+          splitTerms :: T.Text -> Maybe (TokenOrPhrase Term)
+          splitTerms token =
+              case map (Term.fromText . fst) $ toList $ kbaTokenise token of
+                []    -> Nothing
+                [tok] -> Just (Token tok)
+                toks  -> Just (Phrase toks)
+
+          record :: Aeson.Parser (Maybe RecordedValueName)
+          record = do
+              v <- o .:? "record" .!= Json.Bool False
+              case v of
+                Json.Bool True   -> Just <$> o .: "name"
+                Json.Bool False  -> return Nothing
+                String name      -> return $ Just $ RecordedValueName name
+                _                -> fail $ "unknown value for 'record': "++show v
+
+          constNode = ConstNode <$> o .: "value"
+
+          aggregatorNode = do
+              op <- o .: "op"
+              case op :: String of
+                "product" -> ProductNode <$> nodeName <*> o .: "children" <*> record
+                "sum"     -> SumNode <$> nodeName <*> o .: "children" <*> record
+                _         -> fail "Unknown aggregator node type"
+
+          scaleNode = ScaleNode
+              <$> nodeName
+              <*> o .: "scalar"
+              <*> o .: "child"
+              <*> record
+
+          featureNode = FeatureNode
+              <$> o .: "name"
+              <*> o .: "child"
+
+          ifNode =
+              CondNode <$> o .: "predicate"
+                       <*> o .: "true_child"
+                       <*> o .: "false_child"
+
       in do ty <- o .: "type"
             case ty :: String of
               "aggregator"    -> aggregatorNode
@@ -290,29 +330,29 @@ instance FromJSON QueryNode where
               "scoring_model" -> retrievalNode
               _               -> fail "Unknown node type"
 
-instance ToJSON QueryNode where
+instance ToJSON (QueryNode a) where
     toJSON (ConstNode {..}) = object
         [ "type"     .= str "constant"
         , "value"    .= value
         ]
     toJSON (DropNode {}) = object
         [ "type"          .= str "drop" ]
-    toJSON (SumNode {..}) = object
-        $ withName name
+    toJSON (n@SumNode {..}) = object
+        $ withName (name n)
         [ "type"          .= str "aggregator"
         , "op"            .= str "sum"
         , "children"      .= children
         , "record_output" .= recordOutput
         ]
-    toJSON (ProductNode {..}) = object
-        $ withName name
+    toJSON (n@ProductNode {..}) = object
+        $ withName (name n)
         [ "type"          .= str "aggregator"
         , "op"            .= str "product"
         , "children"      .= children
         , "record_output" .= recordOutput
         ]
-    toJSON (ScaleNode {..}) = object
-        $ withName name
+    toJSON (n@ScaleNode {..}) = object
+        $ withName (name n)
         [ "type"          .= str "weight"
         , "child"         .= child
         , "record_output" .= recordOutput
@@ -324,26 +364,25 @@ instance ToJSON QueryNode where
         ]
     toJSON (CondNode {..}) = object
         [ "type"          .= str "if"
-        , "terms"         .= predicateTerms
-        , "negated"       .= predicateNegated
+        , "predicate"     .= predicate
         , "false_child"   .= falseChild
         , "true_child"    .= trueChild
       ]
-    toJSON (RetrievalNode {..}) = object
-        $ withName name
+    toJSON (n@RetrievalNode {..}) = object
+        $ withName (name n)
         [ "type"          .= str "scoring_model"
         , "retrieval_model" .= retrievalModel
         , "field"         .= field
         , "terms"         .= [ object [ "term" .= t, "weight" .= w ]
                              | (t,w) <- toList terms ]
-        , "record_output" .= recordOutput
+        , "record_output" .= recordOutput2 n
         ]
 
 withName :: Maybe QueryNodeName -> [Aeson.Pair] -> [Aeson.Pair]
 withName (Just name) = (("name" .= name) :)
 withName _           = id
 
-collectFieldTerms :: FieldName term -> QueryNode -> [term]
+collectFieldTerms :: FieldName term -> QueryNode a -> [term]
 collectFieldTerms _ ConstNode {}       = []
 collectFieldTerms _ DropNode {}        = []
 collectFieldTerms f SumNode {..}       = foldMap (collectFieldTerms f) children
@@ -356,10 +395,10 @@ collectFieldTerms f RetrievalNode {..}
 collectFieldTerms f CondNode {..}      = collectFieldTerms f trueChild
                                       <> collectFieldTerms f falseChild
 
-queryFeatures :: QueryNode -> S.Set FeatureName
+queryFeatures :: QueryNode a -> S.Set FeatureName
 queryFeatures = go
   where
-    go :: QueryNode -> S.Set FeatureName
+    go :: QueryNode a -> S.Set FeatureName
     go ConstNode{}       = mempty
     go DropNode          = mempty
     go SumNode{..}       = foldMap go children
