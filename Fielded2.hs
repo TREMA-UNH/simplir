@@ -34,6 +34,10 @@ import Data.Coerce
 import qualified Data.Promotion.Prelude as P
 import Data.Singletons.TH
 
+import qualified SimplIR.DiskIndex.Postings as Postings
+import qualified SimplIR.DiskIndex.Document as DocMeta
+import System.IO.Temp
+
 newtype Window = Window Int
                deriving (Enum, Show, Eq, Ord)
 
@@ -78,6 +82,12 @@ data OnDiskDocMetaIndex docmeta
 newtype FieldedIndex docmeta field (fields :: [field]) (postingType :: field -> Type) = FieldedIndex ()
 data Posting p = Posting DocumentId p
 
+postmapM' :: Monad m
+          => (b -> m c)
+          -> Foldl.FoldM m a b
+          -> Foldl.FoldM m a c
+postmapM' f (Foldl.FoldM step0 initial0 extract0) = undefined
+
 foldChunksOf :: Monad m
              => Int                 -- ^ Chunk size
              -> Foldl.FoldM m a b   -- ^ "inner" fold, reducing "points"
@@ -111,7 +121,7 @@ buildIndex
                      ( OnDiskDocMetaIndex docmeta
                      , Rec (Compose OnDiskPostingIndex postingType) fields )
 buildIndex chunkSize outputPaths =
-    zipFoldM (DocumentId 0) succ
+      zipFoldM (DocumentId 0) succ
     $ foldChunksOf chunkSize (Foldl.generalize buildDocMetaIndex)
                              ((,) <$> Foldl.premapM fst writeDocMetaChunk
                                   <*> Foldl.premapM snd writePostingChunks)
@@ -125,14 +135,14 @@ buildDocMetaIndex
     :: forall docmeta field (fields :: [field]) postingType.
        (RecApplicative fields)
     => Foldl.Fold (DocumentId, (docmeta, Rec (Compose (M.Map Term) postingType) fields))
-                  ([(DocumentId, docmeta)], Rec (IndexChunk postingType) fields)
+                  (M.Map DocumentId docmeta, Rec (IndexChunk postingType) fields)
 buildDocMetaIndex = Foldl.Fold step initial finish
   where
-    initial :: ([(DocumentId, docmeta)], Rec (IndexChunk postingType) fields)
-    initial = ([], rpure mempty)
+    initial :: (M.Map DocumentId docmeta, Rec (IndexChunk postingType) fields)
+    initial = (mempty, rpure mempty)
     finish = id
     step (docMetaChunk, postingsChunk) (docId, (docMeta, fieldPostings)) =
-        let docMetaChunk' = (docId, docMeta) : docMetaChunk
+        let docMetaChunk' = M.insert docId docMeta docMetaChunk
 
             toPosting :: Compose (M.Map Term) postingType a -> IndexChunk postingType a
             toPosting (Compose postings) = IndexChunk $ fmap (Posting docId) postings
@@ -141,23 +151,57 @@ buildDocMetaIndex = Foldl.Fold step initial finish
             postingsChunk' = Lift . mappend <<$>> postingsChunk <<*>> rmap toPosting fieldPostings
         in (docMetaChunk', postingsChunk')
 
-writeDocMetaChunk
-    :: forall docmeta m. (MonadIO m)
-    => Foldl.FoldM m [(DocumentId, docmeta)] (OnDiskDocMetaIndex docmeta)
-writeDocMetaChunk = undefined
+createTempFile :: (MonadSafe m)
+               => FilePath -> String -> m (FilePath, ReleaseKey)
+createTempFile dir name = do
+    (fname, h) <- liftIO $ openTempFile dir name
+    hClose h
+    key <- register $ liftIO $ removeFile path
+    return (fname, key)
 
-writePostingChunk
+reduceDocMetaChunk
+    :: forall docmeta m. (MonadIO m)
+    => FilePath
+    -> Foldl.FoldM m (M.Map DocumentId docmeta) (DocMeta.OnDiskIndex docmeta)
+reduceDocMetaChunk outputPath = postmapM' finalMerge $ Foldl.sink $ \docs -> do
+    (path, key) <- liftIO $ createTempFile "." "part.index"
+    let indexPath = DocMeta.DocIndexPath path
+    DocMeta.write indexPath docs
+    return [(indexPath, key)]
+  where
+    finalMerge :: [(DocMeta.OnDiskIndex docmeta, ReleaseKey)]
+               -> IO (DocMeta.OnDiskIndex docmeta)
+    finalMerge chunkIndexes = do
+        idxs <- liftIO $ mapM (DocMeta.openOnDiskIndex . fst) chunkIndexes
+        liftIO $ DiskIdx.merge outputPath idxs
+        mapM_ (release . snd) chunkIndexes
+        return (DocMeta.OnDiskIndex outputPath)
+
+reducePostingChunk
     :: forall m field (postingType :: field -> Type) (f :: field).
        (MonadIO m)
     => Foldl.FoldM m (IndexChunk postingType f) (OnDiskPostingIndex (postingType f))
-writePostingChunk = undefined
+reducePostingChunk = postmapM' finalMerge $ Foldl.sink $ \(IndexChunk postings) -> do
+    (path, key) <- liftIO $ createTempFile "." "part.index"
+    let indexPath = DocMetaIndexPath path
+    Postings.fromTermPostings 128 indexPath postings
+    return [(indexPath, key)]
+  where
+    finalMerge :: [(Postings.OnDiskIndex p, ReleaseKey)]
+               -> IO (Postings.OnDiskIndex p)
+    finalMerge chunkIndexes = do
+        let indexPath = DocMeta.OnDiskIndex outputPath
+        liftIO $ Postings.merge indexPath
+               $ zip (repeat $ Postings.DocIdDelta 0) (map fst chunkIndexes)
+        mapM_ (release . snd) chunkIndexes
+        return indexPath
 
-writePostingChunks
+reducePostingChunks
     :: forall field (fields :: [field]) postingType m.
        (MonadIO m, RecApplicative fields, CanRHandle fields)
     => Foldl.FoldM m (Rec (IndexChunk postingType) fields)
                      (Rec (Compose OnDiskPostingIndex postingType) fields)
-writePostingChunks =
+reducePostingChunks =
     rhandlesM (rpure $ Handler $ fmap Compose writePostingChunk)
 
 newtype Handler m src dest f = Handler (Foldl.FoldM m (src f) (dest f))
