@@ -27,7 +27,7 @@ import BTree (BLeaf(..))
 
 merge :: forall p. (Binary p)
       => Int                -- ^ Chunk size
-      -> PostingIndexPath p -- ^ Merged output
+      -> PostingIdx.OnDiskIndex p -- ^ Merged output
       -> Int                -- ^ Merged index size (in terms)
       -> [(DocIdDelta, [(Term, [PostingsChunk p])])]
       -- ^ a set of posting sources, along with their 'DocumentId' offsets
@@ -43,16 +43,16 @@ mergePostings :: forall p. ()
               => [(DocIdDelta, [(Term, [PostingsChunk p])])]
               -> [(Term, [PostingsChunk p])]
 mergePostings =
-      interleavePostings . map applyDocIdDelta
+      interleavePostings . map applyDelta
   where
-    applyDocIdDelta :: (DocIdDelta, [(Term, [PostingsChunk p])])
-                    -> [(Term, [PostingsChunk p])]
-    applyDocIdDelta (delta, terms) =
+    applyDelta :: (DocIdDelta, [(Term, [PostingsChunk p])])
+               -> [(Term, [PostingsChunk p])]
+    applyDelta (delta, terms) =
         map (fmap $ map $ applyDocIdDeltaToChunk delta) terms
 
 -- | Merge small chunks
 mergeChunks :: Int -> [PostingsChunk p] -> [PostingsChunk p]
-mergeChunks chunkSize = id -- TODO
+mergeChunks _chunkSize = id -- TODO
 
 -- | Given a set of $n$ sorted @[Entry p a]@s, lazily interleave them in sorted
 -- order.
@@ -76,7 +76,7 @@ prop_heapMerge_length :: (Ord p) => [OrderedList (H.Entry p a)] -> Property
 prop_heapMerge_length (map getOrdered -> ents) =
     property $ sum (map length ents) == length (heapMerge ents)
 
-prop_heapMerge_sorted :: (Ord p, Eq a, Show p, Show a) => [OrderedList (H.Entry p a)] -> Property
+prop_heapMerge_sorted :: (Ord p, Show p, Show a) => [OrderedList (H.Entry p a)] -> Property
 prop_heapMerge_sorted (map getOrdered -> ents) =
     let merged = heapMerge ents
     in counterexample (show merged) (sort merged == merged)
@@ -91,7 +91,7 @@ interleavePostings = mergeTerms . heapMerge . map (map (uncurry H.Entry))
     -- Merge chunks belonging to the same term
     mergeTerms :: [H.Entry Term [PostingsChunk p]] -> [(Term, [PostingsChunk p])]
     mergeTerms [] = []
-    mergeTerms xs@(H.Entry term chunks : _) =
+    mergeTerms xs@(H.Entry term _chunks : _) =
         let (postingsOfTerm, rest) = span (\(H.Entry term' _) -> term == term') xs
         in ( term
            , fold $ sortBy (comparing $ startDocId . head) $ map H.payload postingsOfTerm
@@ -109,9 +109,6 @@ test =
        ])
     ]
   where
-    p :: Int -> Posting ()
-    p n = Posting (DocId n) ()
-
     chunk :: [Int] -> PostingsChunk ()
     chunk docIds' =
         Chunk docId0

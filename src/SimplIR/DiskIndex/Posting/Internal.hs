@@ -4,7 +4,7 @@
 
 module SimplIR.DiskIndex.Posting.Internal
     ( DiskIndex
-    , PostingIndexPath(..)
+    , OnDiskIndex(..)
     , fromTermPostings
     , open
     , lookup
@@ -35,12 +35,12 @@ import SimplIR.Term
 
 import Prelude hiding (lookup)
 
-newtype PostingIndexPath p = PostingIndexPath { getPostingIndexPath :: FilePath }
+newtype OnDiskIndex p = OnDiskIndex { getOnDiskIndex :: FilePath }
 
 -- | Build an inverted index from a set of postings.
 fromTermPostings :: forall p. (Binary p)
                  => Int                       -- ^ how many postings per chunk
-                 -> PostingIndexPath p        -- ^ file path
+                 -> OnDiskIndex p        -- ^ file path
                  -> M.Map Term [Posting p]    -- ^ postings for each term,
                                               -- must be sorted by document
                  -> IO ()
@@ -76,8 +76,8 @@ decodeChunk (Chunk firstDocId encPostings) =
 
 newtype DiskIndex p = DiskIndex (BTree.LookupTree Term (EL.EncodedList (PostingsChunk p)))
 
-open :: PostingIndexPath p -> IO (Either String (DiskIndex p))
-open (PostingIndexPath path) = liftIO $ fmap (fmap DiskIndex) (BTree.open path)
+open :: OnDiskIndex p -> IO (Either String (DiskIndex p))
+open (OnDiskIndex path) = liftIO $ fmap (fmap DiskIndex) (BTree.open path)
 
 lookup :: (Binary p)
        => DiskIndex p -> Term -> Maybe [Posting p]
@@ -98,10 +98,10 @@ walkChunks (DiskIndex btree) =
     fromBLeaf (BTree.BLeaf k v) = (k, v)
 
 write :: MonadIO m
-      => PostingIndexPath p -> Int
+      => OnDiskIndex p -> Int
       -> Producer (BLeaf Term (EL.EncodedList (PostingsChunk p))) m ()
       -> m ()
-write (PostingIndexPath path) size prod =
+write (OnDiskIndex path) size prod =
     BTree.fromOrderedToFile 32 (fromIntegral size) path prod
 
 -- | How many terms are in a 'DiskIndex'?

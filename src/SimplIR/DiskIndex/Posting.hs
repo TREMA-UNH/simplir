@@ -4,7 +4,7 @@
 module SimplIR.DiskIndex.Posting
     ( module SimplIR.DiskIndex.Posting.Internal
       -- * On disk
-    , PostingIndexPath(..)
+    , OnDiskIndex(..)
     , merge
     ) where
 
@@ -18,10 +18,10 @@ import           SimplIR.Types
 import           SimplIR.Term
 
 merge :: forall p. Binary p
-      => PostingIndexPath p -> [(DocIdDelta, PostingIndexPath p)] -> IO ()
+      => OnDiskIndex p -> [(DocIdDelta, OnDiskIndex p)] -> IO ()
 merge destDir parts = do
     idxs <- forM parts $ \(docIdMap, path) ->
-        either (const $ error $ "Failed to open posting index: "++getPostingIndexPath path) id
+        either (const $ error $ "Failed to open posting index: "++getOnDiskIndex path) id
             <$> open path
 
     let allPostings :: [[(Term, [PostingsChunk p])]]
