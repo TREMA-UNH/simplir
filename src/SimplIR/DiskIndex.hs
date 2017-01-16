@@ -20,7 +20,6 @@ module SimplIR.DiskIndex
 import System.FilePath
 import System.Directory
 import Data.Binary
-import Data.Monoid
 import qualified Data.Map as M
 import Pipes (Producer)
 
@@ -43,7 +42,7 @@ data DiskIndex docmeta p
 -- The path should be the directory of a valid 'DiskIndex'
 open :: FilePath -> IO (DiskIndex docmeta p)
 open path = do
-    doc <- Doc.open $ Doc.DocIndexPath $ path </> "documents"
+    doc <- Doc.open $ Doc.OnDiskIndex $ path </> "documents"
     Right tf <- PostingIdx.open $ PostingIdx.OnDiskIndex $ path </> "postings" -- TODO: Error handling
     return $ DiskIndex tf doc
 
@@ -56,7 +55,7 @@ fromDocuments :: (Binary docmeta, Binary p)
 fromDocuments dest docs postings = do
     createDirectoryIfMissing True dest
     PostingIdx.fromTermPostings postingChunkSize (PostingIdx.OnDiskIndex $ dest </> "postings") postings
-    Doc.write (Doc.DocIndexPath $ dest </> "documents") (M.fromList docs)
+    Doc.write (Doc.OnDiskIndex $ dest </> "documents") (M.fromList docs)
 
 documents :: (Monad m, Binary docmeta)
           => DiskIndex docmeta p -> Producer (DocumentId, docmeta) m ()
@@ -93,7 +92,7 @@ merge :: forall docmeta p. (Binary p, Binary docmeta)
 merge dest idxs = do
     createDirectoryIfMissing True dest
     -- First merge the document ids
-    let docDest = Doc.DocIndexPath $ dest </> "documents"
+    let docDest = Doc.OnDiskIndex $ dest </> "documents"
     docIds0 <- Doc.merge docDest (map docIdx idxs)
 
     -- then merge the postings themselves

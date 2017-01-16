@@ -12,7 +12,7 @@ module SimplIR.DiskIndex.Document
     , size
     , documents
       -- * On-disk
-    , DocIndexPath(..)
+    , OnDiskIndex(..)
     , merge
     ) where
 
@@ -35,15 +35,15 @@ newtype DocIndex meta = DocIndex (BTree.LookupTree DocumentId meta)
 treeOrder :: BTree.Order
 treeOrder = 64
 
-write :: Binary meta => DocIndexPath meta -> M.Map DocumentId meta -> IO ()
-write (DocIndexPath outFile) docs = do
+write :: Binary meta => OnDiskIndex meta -> M.Map DocumentId meta -> IO ()
+write (OnDiskIndex outFile) docs = do
     createDirectoryIfMissing True (takeDirectory outFile)
     BTree.fromOrderedToFile treeOrder (fromIntegral $ M.size docs) outFile
         (P.each $ map (uncurry BTree.BLeaf) $ M.assocs docs)
 {-# INLINEABLE write #-}
 
-open :: DocIndexPath meta -> IO (DocIndex meta)
-open (DocIndexPath file) =
+open :: OnDiskIndex meta -> IO (DocIndex meta)
+open (OnDiskIndex file) =
     either uhOh (pure . DocIndex) =<< BTree.open file
   where
     uhOh e = fail $ "Failed to open document index "++show file++": "++e
@@ -62,11 +62,11 @@ documents (DocIndex idx) =
     toTuple (BTree.BLeaf a b) = (a,b)
 {-# INLINEABLE documents #-}
 
-newtype DocIndexPath meta = DocIndexPath FilePath
+newtype OnDiskIndex meta = OnDiskIndex FilePath
 
 merge :: forall meta. Binary meta
-      => DocIndexPath meta -> [DocIndex meta] -> IO [DocIdDelta]
-merge (DocIndexPath dest) idxs = do
+      => OnDiskIndex meta -> [DocIndex meta] -> IO [DocIdDelta]
+merge (OnDiskIndex dest) idxs = do
     -- First merge the document ids
     let docIds0 :: [DocIdDelta]
         (_, docIds0) = mapAccumL (\docId0 idx -> (docId0 <> toDocIdDelta (size idx), docId0))
