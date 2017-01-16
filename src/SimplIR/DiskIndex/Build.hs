@@ -109,20 +109,3 @@ zipFold idx0 succ' (Foldl.Fold step0 initial0 extract0) =
         in (succ' idx, s')
 {-# INLINEABLE zipFold #-}
 
-premapM' :: Monad m
-         => (a -> m b)
-         -> Foldl.FoldM m b c
-         -> Foldl.FoldM m a c
-premapM' f (Foldl.FoldM step0 initial0 extract0) =
-    Foldl.FoldM step initial0 extract0
-  where
-    step s x = f x >>= step0 s
-{-# INLINEABLE premapM' #-}
-
-postmapM' :: Monad m
-          => (b -> m c)
-          -> Foldl.FoldM m a b
-          -> Foldl.FoldM m a c
-postmapM' f (Foldl.FoldM step0 initial0 extract0) =
-    Foldl.FoldM step0 initial0 (extract0 >=> f)
-{-# INLINEABLE postmapM' #-}

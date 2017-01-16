@@ -4,6 +4,7 @@
 
 module SimplIR.Utils where
 
+import Control.Monad ((>=>))
 import qualified Control.Foldl as Foldl
 import Pipes
 import qualified Pipes.Prelude as P.P
@@ -99,3 +100,21 @@ foldChunksOf n
       | otherwise = do
         sIn' <- stepIn sIn x
         return (m+1, sIn', sOut)
+
+premapM' :: Monad m
+         => (a -> m b)
+         -> Foldl.FoldM m b c
+         -> Foldl.FoldM m a c
+premapM' f (Foldl.FoldM step0 initial0 extract0) =
+    Foldl.FoldM step initial0 extract0
+  where
+    step s x = f x >>= step0 s
+{-# INLINEABLE premapM' #-}
+
+postmapM' :: Monad m
+          => (b -> m c)
+          -> Foldl.FoldM m a b
+          -> Foldl.FoldM m a c
+postmapM' f (Foldl.FoldM step0 initial0 extract0) =
+    Foldl.FoldM step0 initial0 (extract0 >=> f)
+{-# INLINEABLE postmapM' #-}
