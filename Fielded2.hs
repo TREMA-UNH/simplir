@@ -1,6 +1,9 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE TypeApplications #-}
@@ -19,13 +22,15 @@ module FieldedIndex where
 import qualified Control.Foldl as Foldl
 import Control.Monad.IO.Class
 import qualified Data.Map as M
+import Data.Binary (Binary)
 import Data.Kind
 import Data.Vinyl
 import Data.Vinyl.Functor
 import Data.Vinyl.TypeLevel
+import Data.Profunctor hiding (rmap)
 import Data.Bitraversable
-import Data.Functor.Identity
-import Data.Functor.Classes
+import Data.Bifunctor
+import Data.Coerce
 import qualified Data.Promotion.Prelude as P
 import Data.Singletons.TH
 
@@ -47,6 +52,7 @@ type family FieldPosting (a :: Field) :: * where
 newtype Attr f = Attr { unAttr :: FieldPosting f }
 instance Show (Attr ABoolField) where show (Attr x) = show x
 instance Show (Attr APositionalField) where show (Attr x) = show x
+
 (=::) :: sing f -> FieldPosting f -> Attr f
 _ =:: x = Attr x
 
@@ -55,12 +61,16 @@ type Doc = Rec Attr '[ 'ABoolField, 'APositionalField ]
 aDoc :: Doc
 aDoc = (SABoolField =:: ()) :& (SAPositionalField =:: []) :& RNil
 
+-- Single-fielded index
+type family SingleField p (a :: ()) :: * where
+    SingleField p '() = p
+newtype SingleAttr p f = SingleAttr { unSingleAttr :: SingleField p f }
 
+deriving instance Binary (SingleField p f) => Binary (SingleAttr p f)
 
 
 -- Build
-class MonadSafe m
-class Binary m
+class MonadIO m => MonadSafe m
 data Term = Term String deriving (Eq, Ord, Show)
 newtype DocumentId = DocumentId Int deriving (Eq, Ord, Show, Enum)
 data OnDiskPostingIndex p
@@ -75,19 +85,36 @@ foldChunksOf :: Monad m
              -> Foldl.FoldM m a c
 foldChunksOf = undefined
 
-buildIndex :: forall m docmeta
-                     field (fields :: [field])
-                     (postingType :: field -> Type).
-              (MonadSafe m, MonadIO m, Binary docmeta,
-               RecAll postingType fields Binary, RecApplicative fields, CanRHandle fields)
-           => Int       -- ^ How many documents to include in each index chunk?
-           -> Rec (Const String) fields  -- ^ Final index path
-           -> Foldl.FoldM m (docmeta, Rec (Compose (M.Map Term) postingType) fields)
-                            (OnDiskDocMetaIndex docmeta, Rec (Compose OnDiskPostingIndex postingType) fields)
+-- | Build a single non-fielded index.
+buildOneIndex
+    :: forall m docmeta p. (MonadSafe m, Binary docmeta, Binary p)
+    => Int       -- ^ How many documents to include in each index chunk?
+    -> String    -- ^ Final index path
+    -> Foldl.FoldM m (docmeta, M.Map Term p)
+                     (OnDiskDocMetaIndex docmeta, OnDiskPostingIndex p)
+buildOneIndex chunkSize outputPath =
+      dimap (second $ \x -> Compose (coerce x) :& RNil)
+            (second $ \(Compose x :& RNil) -> coerce x)
+    $ buildIndex @m @docmeta @() @('[ '() ]) @(SingleAttr p)
+                 chunkSize (Const outputPath :& RNil)
+
+-- | Build a set of indexes, one for each document field.
+buildIndex
+    :: forall m docmeta
+              field (fields :: [field])
+              (postingType :: field -> Type).
+       (MonadSafe m, Binary docmeta,
+        RecAll postingType fields Binary, RecApplicative fields, CanRHandle fields)
+    => Int       -- ^ How many documents to include in each index chunk?
+    -> Rec (Const String) fields  -- ^ Final index path
+    -> Foldl.FoldM m (docmeta, Rec (Compose (M.Map Term) postingType) fields)
+                     ( OnDiskDocMetaIndex docmeta
+                     , Rec (Compose OnDiskPostingIndex postingType) fields )
 buildIndex chunkSize outputPaths =
     zipFoldM (DocumentId 0) succ
     $ foldChunksOf chunkSize (Foldl.generalize buildDocMetaIndex)
-                             ((,) <$> Foldl.premapM fst writeDocMetaChunk <*> Foldl.premapM snd writePostingChunks)
+                             ((,) <$> Foldl.premapM fst writeDocMetaChunk
+                                  <*> Foldl.premapM snd writePostingChunks)
 
 -- | A chunk of postings.
 newtype IndexChunk (postingType :: field -> Type) (a :: field)
