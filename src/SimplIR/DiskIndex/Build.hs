@@ -6,7 +6,6 @@ module SimplIR.DiskIndex.Build
     ( buildIndex
     ) where
 
-import Control.Monad ((>=>))
 import Control.Monad.IO.Class
 import Data.Profunctor
 import System.Directory (removeDirectoryRecursive)
@@ -79,21 +78,6 @@ collectIndex =
     toPosting :: DocumentId -> (Term, p) -> M.Map Term [Posting p]
     toPosting docId (term, p) = M.singleton term $ [Posting docId p]
 {-# INLINEABLE collectIndex #-}
-
-zipFoldM :: forall i m a b. Monad m
-         => i -> (i -> i)
-         -> Foldl.FoldM m (i, a) b
-         -> Foldl.FoldM m a b
-zipFoldM idx0 succ' (Foldl.FoldM step0 initial0 extract0) =
-    Foldl.FoldM step initial extract
-  where
-    initial = do s <- initial0
-                 return (idx0, s)
-    extract = extract0 . snd
-    step (!idx, s) x = do
-        s' <- step0 s (idx, x)
-        return (succ' idx, s')
-{-# INLINEABLE zipFoldM #-}
 
 zipFold :: forall i a b.
            i -> (i -> i)
