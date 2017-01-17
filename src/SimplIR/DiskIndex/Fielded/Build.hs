@@ -39,7 +39,6 @@ import Data.Singletons.TH
 
 import Pipes.Safe (MonadSafe, ReleaseKey)
 import qualified Pipes.Safe as Safe
-import System.FilePath ((</>))
 import System.IO (hClose)
 import System.IO.Temp
 import System.Directory (removeFile)

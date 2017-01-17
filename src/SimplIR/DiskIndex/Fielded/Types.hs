@@ -12,8 +12,6 @@ module SimplIR.DiskIndex.Fielded.Types
     , getDocumentIndexPath
     ) where
 
-import Data.Vinyl
-import Data.Vinyl.TypeLevel
 import Data.Kind
 import Data.Proxy
 import System.FilePath
