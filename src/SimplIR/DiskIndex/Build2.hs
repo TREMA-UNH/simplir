@@ -18,7 +18,11 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module SimplIR.DiskIndex.Build2 where
+module SimplIR.DiskIndex.Build2
+    ( NamedFields
+    , buildOneIndex
+    , buildIndex
+    ) where
 
 import qualified Control.Foldl as Foldl
 import Control.Monad.IO.Class
@@ -30,10 +34,8 @@ import Data.Vinyl
 import Data.Vinyl.Functor
 import Data.Vinyl.TypeLevel
 import Data.Profunctor hiding (rmap)
-import Data.Bitraversable
 import Data.Bifunctor
 import Data.Coerce
-import qualified Data.Promotion.Prelude as P
 import Data.Singletons.TH
 
 import Pipes.Safe (MonadSafe, ReleaseKey)
@@ -45,12 +47,13 @@ import System.Directory (removeFile)
 
 import SimplIR.Types (DocumentId, Posting(..))
 import SimplIR.Term (Term)
+import SimplIR.Utils
 import qualified SimplIR.DiskIndex.Posting as Postings
 import qualified SimplIR.DiskIndex.Document as DocMeta
 
 import SimplIR.Types (Position)
 
--- Appklication
+-- Test
 data Field = ABoolField | APositionalField
 genSingletons [''Field]
 
@@ -59,8 +62,8 @@ type family FieldPosting (a :: Field) :: * where
     FieldPosting 'APositionalField = [Position]
 
 newtype Attr f = Attr { unAttr :: FieldPosting f }
-instance Show (Attr ABoolField) where show (Attr x) = show x
-instance Show (Attr APositionalField) where show (Attr x) = show x
+instance Show (Attr 'ABoolField) where show (Attr x) = show x
+instance Show (Attr 'APositionalField) where show (Attr x) = show x
 
 (=::) :: sing f -> FieldPosting f -> Attr f
 _ =:: x = Attr x
@@ -89,19 +92,6 @@ class NamedFields f where
 instance NamedFields DefaultField where
     fieldName Proxy = "default"
 
-postmapM' :: Monad m
-          => (b -> m c)
-          -> Foldl.FoldM m a b
-          -> Foldl.FoldM m a c
-postmapM' f (Foldl.FoldM step0 initial0 extract0) = undefined
-
-foldChunksOf :: Monad m
-             => Int                 -- ^ Chunk size
-             -> Foldl.FoldM m a b   -- ^ "inner" fold, reducing "points"
-             -> Foldl.FoldM m b c   -- ^ "outer" fold, reducing chunks
-             -> Foldl.FoldM m a c
-foldChunksOf = undefined
-
 -- | Build a single non-fielded index.
 buildOneIndex
     :: forall m docmeta p. (MonadSafe m, Binary docmeta, Binary p)
@@ -121,7 +111,7 @@ buildIndex
               field (fields :: [field])
               (postingType :: field -> Type).
        (MonadSafe m, Binary docmeta,
-        RecAll postingType fields Binary, RecApplicative fields, CanRHandle fields,
+        RecAll postingType fields Binary, RecApplicative fields,
         NamedFields field)
     => Int       -- ^ How many documents to include in each index chunk?
     -> FilePath  -- ^ Final index path
@@ -148,6 +138,7 @@ newtype IndexChunk (postingType :: field -> Type) (a :: field)
 
 instance Monoid (IndexChunk postingType a) where
     mempty = IndexChunk mempty
+    mappend = (<>)
 instance Semigroup (IndexChunk postingType a) where
     IndexChunk a <> IndexChunk b =
         IndexChunk $ M.unionWith (++) a b
@@ -197,7 +188,7 @@ reduceDocMetaChunk outputPath = postmapM' finalMerge $ Foldl.sink $ \docs -> do
         let indexPath = DocMeta.OnDiskIndex outputPath
         -- We needn't use the DocIdDeltas since we know that all of the
         -- documents have unique document IDs
-        liftIO $ DocMeta.merge indexPath idxs
+        _ <- liftIO $ DocMeta.merge indexPath idxs
         mapM_ (Safe.release . snd) chunkIndexes
         return indexPath
 
@@ -224,48 +215,53 @@ reducePostingChunk outputPath = postmapM' finalMerge $ Foldl.sink $ \(IndexChunk
 
 reducePostingChunks
     :: forall field (fields :: [field]) postingType m.
-       (MonadIO m, RecApplicative fields, CanRHandle fields,
-        RecAll postingType fields Binary)
+       (MonadSafe m, RecAll postingType fields Binary)
     => Rec (Const FilePath) fields
     -> Foldl.FoldM m (Rec (IndexChunk postingType) fields)
                      (Rec (Compose Postings.OnDiskIndex postingType) fields)
 reducePostingChunks outputPaths =
     rhandlesM reducers
   where
-    reducers :: Rec (Const (Foldl.FoldM m (IndexChunk postingType f)
-                                          (Postings.OnDiskIndex (postingType f)))) fields
-    reducers = rmapC (Proxy @Binary) f outputPaths
+    reducers :: Rec (Handler m (IndexChunk postingType)
+                               (Compose Postings.OnDiskIndex postingType)) fields
+    reducers = rmapC (Proxy @Binary) (Proxy @postingType) f outputPaths
 
-    f :: Binary (postingType x)
-      => Lift (->) (Const FilePath)
-              (Handler m (IndexChunk postingType) (Compose Postings.OnDiskIndex postingType)) (x :: field)
+    f :: forall (x :: field). Binary (postingType x)
+      => Const FilePath x
+      -> Handler m (IndexChunk postingType) (Compose Postings.OnDiskIndex postingType) x
     f = Handler . fmap Compose . reducePostingChunk . getConst
 
 type family CAll (f :: a -> Constraint) (xs :: [a]) :: Constraint where
     CAll f (x ': xs) = (f x, CAll f xs)
     CAll _ '[]       = ()
 
-class CanRMapC (xs :: [a]) where
-    rmapC :: forall c f g. (CAll c xs)
-          => Proxy c -> (forall x. c x => f x -> g x)
-          -> Rec f xs -> Rec g xs
-instance CanRMapC xs => CanRMapC (x ': xs) where
-    rmapC proxy f (r :& rs) = f r :& rmapC proxy f rs
-instance CanRMapC '[] where
-    rmapC _ f RNil = RNil
+rmapC :: forall field (c :: Type -> Constraint) (xs :: [field])
+                (f :: field -> Type) (g :: field -> Type) (h :: field -> Type). (RecAll h xs c)
+      => Proxy c -> Proxy h
+      -> (forall (x :: field). c (h x) => f x -> g x)
+      -> Rec f xs -> Rec g xs
+rmapC proxyC proxyH f (r :& rs) = f r :& rmapC proxyC proxyH f rs
+rmapC _ _ _ RNil = RNil
 
 newtype Handler m src dest f = Handler (Foldl.FoldM m (src f) (dest f))
 
-class CanRHandle (fields :: [a]) where
-    -- | Use a set of 'FoldM's to fold over the various pieces of a record.
-    rhandlesM :: (Monad m)
-              => Rec (Handler m f g) fields
-              -> Foldl.FoldM m (Rec f fields) (Rec g fields)
-instance (CanRHandle fs) => CanRHandle (f ': fs) where
-    rhandlesM (Handler h :& hs) =
-        (:&) <$> Foldl.premapM (\(x :& _) -> x) h <*> Foldl.premapM (\(_ :& rest) -> rest) (rhandlesM hs)
-instance CanRHandle '[] where
-    rhandlesM RNil = pure RNil
+collectHandler :: Monad m
+               => Handler m src dest (g f)
+               -> Handler m (Compose src g) (Compose dest g) f
+collectHandler (Handler f) = Handler $ dimap getCompose Compose f
+
+distributeHandler :: Monad m
+                  => Handler m (Compose src g) (Compose dest g) f
+                  -> Handler m src dest (g f)
+distributeHandler (Handler f) = Handler $ dimap Compose getCompose f
+
+-- | Use a set of 'FoldM's to fold over the various pieces of a record.
+rhandlesM :: (Monad m)
+          => Rec (Handler m f g) fields
+          -> Foldl.FoldM m (Rec f fields) (Rec g fields)
+rhandlesM (Handler h :& hs) =
+    (:&) <$> Foldl.premapM (\(x :& _) -> x) h <*> Foldl.premapM (\(_ :& rest) -> rest) (rhandlesM hs)
+rhandlesM RNil = pure RNil
 
 zipFoldM :: forall i m a b. Monad m
          => i -> (i -> i)
