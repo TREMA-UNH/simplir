@@ -62,7 +62,7 @@ documents (DocIndex idx) =
     toTuple (BTree.BLeaf a b) = (a,b)
 {-# INLINEABLE documents #-}
 
-newtype OnDiskIndex meta = OnDiskIndex FilePath
+newtype OnDiskIndex meta = OnDiskIndex { getOnDiskPath :: FilePath }
 
 merge :: forall meta. Binary meta
       => OnDiskIndex meta -> [DocIndex meta] -> IO [DocIdDelta]

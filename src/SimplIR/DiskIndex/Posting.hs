@@ -21,7 +21,7 @@ merge :: forall p. Binary p
       => OnDiskIndex p -> [(DocIdDelta, OnDiskIndex p)] -> IO ()
 merge destDir parts = do
     idxs <- forM parts $ \(docIdMap, path) ->
-        either (const $ error $ "Failed to open posting index: "++getOnDiskIndex path) id
+        either (const $ error $ "Failed to open posting index: "++getOnDiskPath path) id
             <$> open path
 
     let allPostings :: [[(Term, [PostingsChunk p])]]

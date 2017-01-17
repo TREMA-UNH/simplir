@@ -33,7 +33,9 @@ library
       SimplIR.BinaryFile
       SimplIR.DiskIndex
       SimplIR.DiskIndex.Build
-      SimplIR.DiskIndex.Build2
+      SimplIR.DiskIndex.Fielded.Build
+      SimplIR.DiskIndex.Fielded.Types
+      SimplIR.DiskIndex.Fielded.Open
       SimplIR.DiskIndex.Posting
       SimplIR.DiskIndex.Posting.Internal
       SimplIR.DiskIndex.Posting.Collect

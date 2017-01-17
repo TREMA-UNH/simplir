@@ -18,9 +18,8 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module SimplIR.DiskIndex.Build2
-    ( NamedFields
-    , buildOneIndex
+module SimplIR.DiskIndex.Fielded.Build
+    ( buildOneIndex
     , buildIndex
     ) where
 
@@ -50,6 +49,7 @@ import SimplIR.Term (Term)
 import SimplIR.Utils
 import qualified SimplIR.DiskIndex.Posting as Postings
 import qualified SimplIR.DiskIndex.Document as DocMeta
+import SimplIR.DiskIndex.Fielded.Types
 
 import SimplIR.Types (Position)
 
@@ -83,12 +83,6 @@ deriving instance Binary (SingleField p f) => Binary (SingleAttr p f)
 
 
 -- Build
-newtype FieldedIndex docmeta field (fields :: [field]) (postingType :: field -> Type)
-    = FieldedIndex ()
-
-class NamedFields f where
-    fieldName :: Proxy (a :: f) -> String
-
 instance NamedFields DefaultField where
     fieldName Proxy = "default"
 
@@ -124,13 +118,14 @@ buildIndex chunkSize outputPath =
                              ((,) <$> Foldl.premapM fst (reduceDocMetaChunk docIdxPath)
                                   <*> Foldl.premapM snd (reducePostingChunks postingPaths))
   where
-    docIdxPath = outputPath </> "documents"
+    onDisk = OnDiskIndex outputPath
+    docIdxPath = DocMeta.getOnDiskPath $ getDocumentIndexPath onDisk
 
     postingPaths :: Rec (Const FilePath) fields
     postingPaths = rpure fieldName'
 
     fieldName' :: forall f. Const FilePath (f :: field)
-    fieldName' = Const $ outputPath </> fieldName (Proxy :: Proxy f)
+    fieldName' = Const $ Postings.getOnDiskPath $ getFieldIndexPath onDisk (Proxy :: Proxy f)
 
 -- | A chunk of postings.
 newtype IndexChunk (postingType :: field -> Type) (a :: field)

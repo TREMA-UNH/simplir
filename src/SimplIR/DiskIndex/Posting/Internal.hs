@@ -35,7 +35,7 @@ import SimplIR.Term
 
 import Prelude hiding (lookup)
 
-newtype OnDiskIndex p = OnDiskIndex { getOnDiskIndex :: FilePath }
+newtype OnDiskIndex p = OnDiskIndex { getOnDiskPath :: FilePath }
 
 -- | Build an inverted index from a set of postings.
 fromTermPostings :: forall p. (Binary p)
