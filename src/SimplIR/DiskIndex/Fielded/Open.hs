@@ -50,3 +50,7 @@ open idx = do
 rproxies :: forall fields. RecApplicative fields
          => Proxy fields -> Rec Proxy (fields :: [field])
 rproxies _ = rpure Proxy
+
+testOpen :: ExceptT String IO (FieldedIndex Char '[ 'DefaultField ] (SingleAttr Int))
+testOpen = open (OnDiskIndex "test")
+

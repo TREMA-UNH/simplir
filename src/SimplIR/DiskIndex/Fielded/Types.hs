@@ -1,4 +1,8 @@
-{-# LANGUAGE ConstraintKinds       #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE TypeInType #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE PolyKinds #-}
@@ -10,10 +14,14 @@ module SimplIR.DiskIndex.Fielded.Types
     , OnDiskIndex(..)
     , getFieldIndexPath
     , getDocumentIndexPath
+      -- * Single-fielded index
+    , DefaultField(..)
+    , SingleAttr(..)
     ) where
 
 import Data.Kind
 import Data.Proxy
+import Data.Binary (Binary)
 import System.FilePath
 
 import qualified SimplIR.DiskIndex.Posting as Postings
@@ -40,3 +48,14 @@ getDocumentIndexPath
     -> DocMeta.OnDiskIndex docmeta
 getDocumentIndexPath (OnDiskIndex root) =
     DocMeta.OnDiskIndex $ root </> "documents"
+
+-- Single-fielded index
+data DefaultField = DefaultField
+type family SingleField p (a :: DefaultField) :: Type where
+    SingleField p 'DefaultField = p
+newtype SingleAttr p f = SingleAttr { unSingleAttr :: SingleField p f }
+
+deriving instance Binary (SingleField p f) => Binary (SingleAttr p f)
+
+instance NamedFields DefaultField where
+    fieldName Proxy = "default"

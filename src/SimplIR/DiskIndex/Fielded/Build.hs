@@ -2,13 +2,10 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DataKinds #-}
@@ -50,9 +47,10 @@ import qualified SimplIR.DiskIndex.Posting as Postings
 import qualified SimplIR.DiskIndex.Document as DocMeta
 import SimplIR.DiskIndex.Fielded.Types
 
+-- Testing
 import SimplIR.Types (Position)
+import qualified SimplIR.Term  as Term
 
--- Test
 data Field = ABoolField | APositionalField
 genSingletons [''Field]
 
@@ -72,18 +70,22 @@ type Doc = Rec Attr '[ 'ABoolField, 'APositionalField ]
 aDoc :: Doc
 aDoc = (SABoolField =:: ()) :& (SAPositionalField =:: []) :& RNil
 
--- Single-fielded index
-data DefaultField = DefaultField
-type family SingleField p (a :: DefaultField) :: Type where
-    SingleField p 'DefaultField = p
-newtype SingleAttr p f = SingleAttr { unSingleAttr :: SingleField p f }
-
-deriving instance Binary (SingleField p f) => Binary (SingleAttr p f)
-
+testBuild :: IO ()
+testBuild = do
+    _ <- Safe.runSafeT $ Foldl.foldM (buildOneIndex 1000 "test") docs
+    return ()
+  where
+    (.=) :: String -> Int -> (Term, Int)
+    s .= n = (Term.fromString s, n)
+    docs :: [(Char, M.Map Term Int)]
+    docs = [('a', M.fromList [ "hello" .= 5
+                             , "world" .= 6
+                             , "turtle" .= 6
+                             ]
+            )
+           ]
 
 -- Build
-instance NamedFields DefaultField where
-    fieldName Proxy = "default"
 
 -- | Build a single non-fielded index.
 buildOneIndex
