@@ -8,6 +8,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE StaticPointers #-}
 
 import Control.Monad.State.Strict hiding ((>=>))
 import Data.Bifunctor
@@ -30,6 +31,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.HashSet as HS
 import qualified Data.Set as S
 import qualified Data.Text as T
+import qualified Data.Text.IO as TIO
 import qualified Data.Text.Lazy as TL
 import qualified Control.Foldl as Foldl
 import qualified Data.Vector as V
@@ -39,6 +41,9 @@ import           Pipes.Safe
 import qualified Pipes.Text.Encoding as P.T
 import qualified Pipes.ByteString as P.BS
 import qualified Pipes.Prelude as P.P
+
+import Control.Distributed.Closure
+import qualified Control.Concurrent.ForkMap as ForkMap
 
 import Options.Applicative
 
@@ -107,14 +112,27 @@ buildIndex :: DocumentSource -> IO [DataSource] -> IO ()
 buildIndex docSource readDocLocs = do
     docs <- readDocLocs
     let --foldCorpusStats = Foldl.generalize documentTermStats
-        indexFold = (,) <$> BuildIdx.buildIndex 10000 "index" <*> pure ()
+        indexFold = (,) <$> BuildIdx.buildIndex 10000 outPath <*> pure ()
+        outPath = "index"
         toIndexDoc ((archiveName, docName), text) =
             ((archiveName, docName), tokenise text)
-    (idx, corpusStats) <- runSafeT $ foldProducer indexFold
-        $ docSource docs
+    (idx, corpusStats) <- foldProducer (BuildIdx.postmapM' (BuildIdx.mergeChunks outPath) $ Foldl.generalize Foldl.list)
+        $  ForkMap.mapIO nWorkers nWorkers (static ForkMap.Dict)
+           (static worker `cap` cpure (static Dict) docSource)
+           $ foldChunks chunkSize (Foldl.generalize Foldl.list)
+           $ each docs
+    return ()
+  where
+    nWorkers = 8
+    chunkSize = 1000
+
+    worker :: DocumentSource -> [DataSource] -> IO [(OnDiskIndex docmeta p)]
+    worker docSource docs =
+        runSafeT
+        $  foldProducer BuildIdx.mergeIndexes
+        $  docSource docs
        >-> normalizationPipeline
        >-> P.P.map (second M.fromList)
-    return ()
 
 type ArchiveName = T.Text
 
@@ -138,6 +156,7 @@ trecHtmlDocuments :: [DataSource]
                   -> Producer ((ArchiveName, DocumentName), T.Text) (SafeT IO) ()
 trecHtmlDocuments dsrcs =
     trecSource dsrcs
+      >-> P.P.chain (liftIO . dumpDoc . second Trec.docBody)
       >-> P.P.map (second $ maybeScrape . Trec.docBody)
   where
     maybeScrape s
@@ -150,6 +169,10 @@ trecHtmlDocuments dsrcs =
         let beginning = T.toCaseFold $ T.take 200 s
         in "<html" `T.isInfixOf` beginning
            || "<!doctype" `T.isInfixOf` beginning
+
+dumpDoc :: ((ArchiveName, DocumentName), T.Text) -> IO ()
+dumpDoc ((_, DocName name), t) =
+    TIO.writeFile ("docs/" <> Utf8.toString name) t
 
 kbaDocuments :: [DataSource]
              -> Producer ((ArchiveName, DocumentName), T.Text) (SafeT IO) ()

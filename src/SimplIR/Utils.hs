@@ -6,6 +6,7 @@ module SimplIR.Utils where
 
 import qualified Control.Foldl as Foldl
 import Pipes
+import Pipes.Internal (Proxy(..))
 import qualified Pipes.Prelude as P.P
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Char8 as BS
@@ -15,6 +16,31 @@ import qualified Pipes.ByteString as P.BS
 -- with @TypeApplications@.
 cat' :: forall a m r. Monad m => Pipe a a m r
 cat' = cat
+
+-- | Map the input stream of a 'Foldl.FoldM' through a 'Pipe'.
+mapMFold :: Monad m => Pipe a b m r -> Foldl.FoldM m b c -> Foldl.FoldM m a c
+mapMFold pipe0 (Foldl.FoldM step0 initial0 extract0) = Foldl.FoldM step initial extract
+  where
+    initial = do acc0 <- initial0
+                 return (acc0, pipe0)
+    extract (acc, _) = extract0 acc
+
+    step (acc, pipe) x =
+        case pipe of
+          Request () cont -> drain acc $ cont x
+          Respond y cont  -> do acc' <- step0 acc y
+                                step (acc', cont ()) x
+          M action        -> do pipe' <- action
+                                step (acc, pipe') x
+          Pure _          -> error "impossible"
+
+    drain acc pipe =
+        case pipe of
+          Request () _    -> return (acc, pipe)
+          Respond y cont  -> do acc' <- step0 acc y
+                                drain acc' (cont ())
+          M action        -> action >>= drain acc
+          Pure _          -> error "impossible"
 
 foldProducer :: Monad m => Foldl.FoldM m a b -> Producer a m () -> m b
 foldProducer (Foldl.FoldM step initial extract) =

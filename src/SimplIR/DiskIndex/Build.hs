@@ -4,6 +4,14 @@
 -- | Build disk indexes in a memory-friendly manner.
 module SimplIR.DiskIndex.Build
     ( buildIndex
+    , collectIndex
+    , chunkToIndex
+    , mergeIndexes
+    , mergeChunks
+
+      -- * Utilities
+    , postmapM'
+    , premapM'
     ) where
 
 import Control.Monad ((>=>))
@@ -44,21 +52,22 @@ mergeChunks outputPath chunks = do
     return (DiskIdx.OnDiskIndex outputPath)
 
 -- | Write a set of index chunks.
-mergeIndexes :: forall docmeta p m. (MonadSafe m, Binary docmeta, Binary p)
+mergeIndexes :: (MonadSafe m, Binary docmeta, Binary p)
              => Foldl.FoldM m ([(DocumentId, docmeta)], M.Map Term [Posting p])
                               [(DiskIdx.OnDiskIndex docmeta p, ReleaseKey)]
 mergeIndexes =
-    premapM' chunkToIndex
-    $ Foldl.generalize Foldl.list
-  where
-    chunkToIndex :: ([(DocumentId, docmeta)], M.Map Term [Posting p])
-                 -> m (DiskIdx.OnDiskIndex docmeta p, ReleaseKey)
-    chunkToIndex (docIdx, postingIdx) = do
-        path <- liftIO $ createTempDirectory "." "part.index"
-        key <- register $ liftIO $ removeDirectoryRecursive path
-        liftIO $ DiskIdx.fromDocuments path docIdx postingIdx
-        return (DiskIdx.OnDiskIndex path, key)
+    premapM' chunkToIndex $ Foldl.generalize Foldl.list
 {-# INLINEABLE mergeIndexes #-}
+
+chunkToIndex :: (MonadSafe m, Binary docmeta, Binary p)
+             => ([(DocumentId, docmeta)], M.Map Term [Posting p])
+             -> m (DiskIdx.OnDiskIndex docmeta p, ReleaseKey)
+chunkToIndex (docIdx, postingIdx) = do
+    path <- liftIO $ createTempDirectory "." "part.index"
+    key <- register $ liftIO $ removeDirectoryRecursive path
+    liftIO $ DiskIdx.fromDocuments path docIdx postingIdx
+    return (DiskIdx.OnDiskIndex path, key)
+{-# INLINEABLE chunkToIndex #-}
 
 -- | Build an index chunk in memory.
 collectIndex :: forall p docmeta.

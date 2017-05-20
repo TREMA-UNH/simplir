@@ -70,6 +70,8 @@ executable simplir2
       aeson,
       warc,
       b-tree,
+      fork-map,
+      distributed-closure,
       simplir,
       simplir-html-clean,
       simplir-trec-streaming,
