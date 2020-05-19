@@ -97,7 +97,7 @@ instance Binary SmallUtf8 where
 
     put (SmallUtf8 t)
       | BS.S.length t >= 0xffffffff
-      = fail "Crazy long SmallUtf8"
+      = error "Crazy long SmallUtf8"
 
       | BS.S.length t < 255
       = do putWord8 $ fromIntegral $ BS.S.length t
