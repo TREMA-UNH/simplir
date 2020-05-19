@@ -13,7 +13,7 @@ import SimplIR.DataSource as DataSource
 import SimplIR.DataSource.Compression
 import qualified SimplIR.DataSource.Gpg as Gpg
 
-readKbaFile :: (MonadSafe m, MonadBaseControl IO m)
+readKbaFile :: (MonadSafe m, MonadBaseControl IO m, MonadFail m)
             => DataSource m -> m BS.L.ByteString
 readKbaFile src =
     P.BS.toLazyM $ decompressed $ maybeDecrypt
