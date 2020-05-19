@@ -46,3 +46,6 @@
 [submodule "vendor/pinch"]
 	path = vendor/pinch
 	url = https://github.com/bgamari/pinch
+[submodule "vendor/text-pipes"]
+	path = vendor/text-pipes
+	url = https://github.com/bgamari/text-pipes
