@@ -13,6 +13,7 @@ import           Control.Monad (join)
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.Text as T
+import           Control.Monad.Catch
 
 import           Pipes
 import qualified Pipes.GZip as P.GZip
@@ -24,7 +25,7 @@ data Compression = GZip   -- ^ e.g. @file.gz@
                  | Lzma   -- ^ e.g. @file.xz@
                  deriving (Show, Ord, Eq)
 
-decompress :: MonadIO m
+decompress :: (MonadThrow m, MonadIO m)
            => Maybe Compression
            -> Producer ByteString m a -> Producer ByteString m a
 decompress Nothing      = id
@@ -51,7 +52,8 @@ detectCompression s
   | "BZh" `BS.isPrefixOf` s      = Just BZip2
   | otherwise                    = Nothing
 
-decompressed :: MonadIO m => Producer ByteString m a -> Producer ByteString m a
+decompressed :: (MonadThrow m, MonadIO m)
+             => Producer ByteString m a -> Producer ByteString m a
 decompressed prod0 = do
     res <- lift $ next prod0
     case res of
