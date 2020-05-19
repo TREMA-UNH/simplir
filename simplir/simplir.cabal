@@ -54,7 +54,7 @@ library
       build-depends: ghc-compact
 
   build-depends:
-      base >=4.8 && <4.13,
+      base >=4.8 && <4.15,
       template-haskell,
       pipes-bytestring >=2.1 && <2.2,
       pipes,
@@ -67,7 +67,7 @@ library
       stm,
       split,
       parallel,
-      binary >= 0.7 && < 0.10,
+      binary >= 0.7 && < 0.11,
       errors >=2.0 && <2.4,
       exceptions >= 0.8,
       text >=1.2 && <1.3,
@@ -78,9 +78,9 @@ library
       pipes-zlib >= 0.4.4.2 && <0.5,
       pipes-lzma,
       pipes-safe,
-      lens >=4.14 && <4.19,
+      lens >=4.14 && <4.20,
       http-types >=0.9 && <0.13,
-      http-media >=0.6 && <0.8,
+      http-media >=0.6 && <0.9,
       http-parsers >= 0.1 && <0.2,
       attoparsec >=0.13 && <0.14,
       filepath >=1.4 && <1.5,
@@ -88,7 +88,7 @@ library
       text-icu >=0.7 && <0.8,
       deepseq >=1.4 && <1.5,
       unordered-containers >=0.2 && <0.3,
-      hashable >= 1.2 && <1.3,
+      hashable >= 1.2 && <1.4,
       logging-facade >= 0.1 && <0.4,
       log-domain,
       linear,
@@ -119,7 +119,7 @@ library
       cborg >= 0.2,
       indexed-vector,
 
-      QuickCheck >=2.8 && <2.14,
+      QuickCheck >=2.8 && <2.15,
       tasty,
       tasty-quickcheck,
       tasty-hunit,

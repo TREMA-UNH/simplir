@@ -21,7 +21,7 @@ library
                        filepath >= 1.4,
                        stm >=2.4 && <2.6,
                        transformers >= 0.5,
-                       binary >=0.8 && <0.10,
+                       binary >=0.8 && <0.11,
                        hashable >= 1.2,
                        bytestring >=0.10 && <0.11,
                        vector >=0.12 && <0.13,
