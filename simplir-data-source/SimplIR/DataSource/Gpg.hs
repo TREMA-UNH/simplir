@@ -19,7 +19,7 @@ import           Pipes
 import           Pipes.Safe
 import qualified Pipes.ByteString as P.BS
 
-processIt :: (MonadSafe m, MonadBaseControl IO m)
+processIt :: (MonadSafe m, MonadBaseControl IO m, MonadFail m)
           => FilePath -> [String]
           -> Producer ByteString m ()
           -> Producer ByteString m ()
@@ -41,14 +41,14 @@ processIt cmd args prod0 = do
     cp = (proc cmd args) { std_in = CreatePipe
                          , std_out = CreatePipe }
 
-decrypt :: (MonadSafe m, MonadBaseControl IO m)
+decrypt :: (MonadSafe m, MonadBaseControl IO m, MonadFail m)
         => Producer ByteString m ()
         -> Producer ByteString m ()
 decrypt = processIt "gpg2" ["--batch", "--decrypt", "--use-agent"]
 
 type UserId = String
 
-encrypt :: (MonadSafe m, MonadBaseControl IO m)
+encrypt :: (MonadSafe m, MonadBaseControl IO m, MonadFail m)
         => UserId    -- ^ recipient identity
         -> Producer ByteString m ()
         -> Producer ByteString m ()

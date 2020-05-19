@@ -18,6 +18,6 @@ main = do
     x <- msum $ map ($ bs)
         [ evaluate . TE.decodeUtf8
         , decodeIso8859
-        , fail "Failed to decode"
+        , const $ fail "Failed to decode"
         ]
     TLIO.putStrLn $ docBody $ clean x
