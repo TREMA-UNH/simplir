@@ -90,7 +90,7 @@ library
       unordered-containers >=0.2 && <0.3,
       hashable >= 1.2 && <1.4,
       logging-facade >= 0.1 && <0.4,
-      log-domain,
+      log-domain >= 0.13,
       linear,
       scientific,
       dlist >= 0.7,
