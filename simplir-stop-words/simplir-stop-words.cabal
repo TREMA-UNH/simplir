@@ -10,6 +10,7 @@ maintainer:          ben@smart-cactus.org
 copyright:           (c) 2019 Ben Gamari
 category:            Text
 build-type:          Simple
+extra-source-files:  data/inquery-en.txt
 cabal-version:       >=1.10
 
 library
