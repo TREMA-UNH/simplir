@@ -10,6 +10,14 @@ let
 
   trec-eval = nixpkgs.enableDebugging (nixpkgs.callPackage ./trec-eval.nix {});
 
+  all-cabal-hashes =
+    let
+      rev = "30a0c2f2c25056349249cda6aec4428c2229e3b8";
+    in builtins.fetchurl {
+      url    = "https://github.com/commercialhaskell/all-cabal-hashes/archive/${rev}.tar.gz";
+      sha256 = "1a3zvq1yr4wm335y8zndn08d3yjjg51kk6p8lx11jpn1j28si0k8";
+    };
+
   haskellOverrides = self: super:
     let
       otherOverrides = {
@@ -76,8 +84,11 @@ let
       };
     in otherOverrides // simplirPackages // { simplirPackages = simplirPackages; };
 
-  ghcVersion = "ghc865";
-  haskellPackages = nixpkgs.haskell.packages."${ghcVersion}".override {overrides = haskellOverrides;};
+  ghcVersion = "ghc883";
+  haskellPackages = nixpkgs.haskell.packages."${ghcVersion}".override {
+    inherit all-cabal-hashes;
+    overrides = haskellOverrides;
+  };
 in {
   inherit ghcVersion haskellPackages haskellOverrides;
   inherit trec-eval;
