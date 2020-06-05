@@ -67,8 +67,8 @@ let
         warc = self.callCabal2nix "warc" (fetchFromGitHub {
           owner = "bgamari";
           repo = "warc";
-          rev = "725d9d1265fda5fe3cb8cc11eff7d9bf2f714356";
-          sha256 = "006k5brxxr023i62pq8q4v6sn1svgyg1lyv4b1nll5n5l3bj9jvw";
+          rev = "76ce71f4e5e0bb51ea22c1210215ec194e33b442";
+          sha256 = "1p3zmyhrrj44bj9l5zrcw34bzkqg12g94nbb4q5d9l8dirg837j6";
         }) {};
 
         pinch = self.callCabal2nix "pinch" ./vendor/pinch {};
