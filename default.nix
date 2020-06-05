@@ -54,9 +54,10 @@ let
         text-icu   = dontCheck super.text-icu;
         pipes-zlib = doJailbreak super.pipes-zlib;
         pipes-text = doJailbreak (super.callHackage "pipes-text" "0.0.2.5" {});
-        pipes-lzma = doJailbreak super.pipes-lzma;
-        pipes-interleave = doJailbreak super.pipes-interleave;
-        b-tree = doJailbreak super.b-tree;
+        pipes-lzma = doJailbreak (super.callHackage "pipes-lzma" "0.2.0.0" {});
+        pipes-interleave = doJailbreak (super.callHackage "pipes-interleave" "1.1.3" {});
+        html-parse = self.callCabal2nix "html-parse" ./vendor/html-parse {};
+        b-tree = doJailbreak (self.callHackage "b-tree" "0.1.4" {});
         log-domain = self.callCabal2nix "log-domain" (fetchFromGitHub {
           owner = "ekmett";
           repo = "log-domain";
