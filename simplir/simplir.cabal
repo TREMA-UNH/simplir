@@ -40,6 +40,7 @@ library
       SimplIR.Encoded.Cbor
       SimplIR.EncodedList
       SimplIR.EncodedList.Cbor
+      SimplIR.TextInterval
       SimplIR.Tokenise
       SimplIR.TopK
       SimplIR.Utils.Compact
