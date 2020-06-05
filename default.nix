@@ -71,7 +71,7 @@ let
           sha256 = "006k5brxxr023i62pq8q4v6sn1svgyg1lyv4b1nll5n5l3bj9jvw";
         }) {};
 
-        pinch = doJailbreak (self.callHackage "pinch" "0.3.4.0" {});
+        pinch = self.callCabal2nix "pinch" ./vendor/pinch {};
         pipes-safe = self.callHackage "pipes-safe" "2.3.1" {};
       };
     in otherOverrides // simplirPackages // { simplirPackages = simplirPackages; };
