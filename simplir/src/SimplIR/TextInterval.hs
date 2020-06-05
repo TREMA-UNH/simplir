@@ -127,4 +127,4 @@ test3 = testIt
     [("hell","a"),("o","ab"),(" wor","b"),("ld","")]
 
 tests :: IO ()
-tests = sequence [test1, test2, test3]
+tests = sequence_ [test1, test2, test3]
