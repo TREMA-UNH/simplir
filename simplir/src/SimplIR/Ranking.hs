@@ -7,6 +7,7 @@ module SimplIR.Ranking
     ( -- * Rankings
       Ranking
       -- ** Construction
+    , empty
       -- *** From lists
     , fromList
     , fromListK
@@ -65,10 +66,17 @@ sort = VH.modify $ Sort.sortBy (comparing $ Down . fst)
 {-# SPECIALISE sort :: V (Float, a) -> V (Float, a) #-}
 
 partialSort :: (Ord score, VU.Unbox score) => Int -> V (score, a) -> V (score, a)
-partialSort k = VH.modify $ \xs -> Sort.partialSortBy (comparing $ Down . fst) xs k
+partialSort k v =
+    VH.modify (\xs -> Sort.partialSortBy (comparing $ Down . fst) xs k') v
+  where k' = min (VH.length v) k
+        -- Avoid vector-algorithms #27.
 {-# SPECIALISE partialSort :: Int -> V (Double, a) -> V (Double, a) #-}
 {-# SPECIALISE partialSort :: Int -> V (Float, a) -> V (Float, a) #-}
 
+-- | An empty 'Ranking'.
+empty :: (VU.Unbox score)
+      => Ranking score a
+empty = Ranking VH.empty
 
 -- | @fromVector xs@ builds a ranking from entries of an unsorted vector @xs@.
 fromVector :: (VU.Unbox score, Ord score)
@@ -84,6 +92,7 @@ fromVectorK :: (VU.Unbox score, Ord score)
             => Int
             -> VH.Vector VU.Vector V.Vector (score, a)
             -> Ranking score a
+fromVectorK 0 = empty
 fromVectorK k = Ranking . VH.take k . partialSort k
 {-# SPECIALISE fromVectorK :: Int -> V (Double, a) -> Ranking Double a #-}
 {-# SPECIALISE fromVectorK :: Int -> V (Float, a) -> Ranking Float a #-}
