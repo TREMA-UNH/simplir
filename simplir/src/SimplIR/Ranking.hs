@@ -92,8 +92,8 @@ fromVectorK :: (VU.Unbox score, Ord score)
             => Int
             -> VH.Vector VU.Vector V.Vector (score, a)
             -> Ranking score a
-fromVectorK 0 = empty
-fromVectorK k = Ranking . VH.take k . partialSort k
+fromVectorK 0 _ = empty
+fromVectorK k v = Ranking $ VH.take k $ partialSort k v
 {-# SPECIALISE fromVectorK :: Int -> V (Double, a) -> Ranking Double a #-}
 {-# SPECIALISE fromVectorK :: Int -> V (Float, a) -> Ranking Float a #-}
 
