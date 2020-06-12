@@ -94,6 +94,7 @@ import qualified Control.Foldl as F
 import Data.Kind
 import Data.Type.Equality
 import Data.Ix
+import qualified Data.Aeson as Aeson
 import qualified Data.List.NonEmpty as NE
 import Data.Tuple
 import Data.Maybe
@@ -117,6 +118,15 @@ type role FeatureIndex nominal
 data SomeFeatureSpace f where
     SomeFeatureSpace :: (forall s. FeatureSpace f s) -> SomeFeatureSpace f
 
+instance (Aeson.ToJSON f, Ord f, Show f) => Aeson.ToJSON (SomeFeatureSpace f) where
+    toJSON (SomeFeatureSpace fspace) = Aeson.toJSON fspace
+    toEncoding (SomeFeatureSpace fspace) = Aeson.toEncoding fspace
+
+instance (Aeson.FromJSON f, Ord f, Show f, Read f) => Aeson.FromJSON (SomeFeatureSpace f) where
+    parseJSON v = do
+      fs <- Aeson.parseJSON v
+      return $ SomeFeatureSpace $ unsafeFromFeatureList $ V.toList fs
+
 data FeatureSpace f s where
     -- | Space to create low level feature vectors
     Space :: { fsIndexToFeature :: VI.Vector V.Vector (FeatureIndex s) f
@@ -124,6 +134,10 @@ data FeatureSpace f s where
              }
           -> FeatureSpace f s
     deriving (Show)
+
+instance (Aeson.ToJSON f, Ord f, Show f) => Aeson.ToJSON (FeatureSpace f s) where
+    toJSON = Aeson.toJSON . featureNames
+    toEncoding = Aeson.toEncoding . featureNames
 
 data Stack (ss :: [Type])
 
