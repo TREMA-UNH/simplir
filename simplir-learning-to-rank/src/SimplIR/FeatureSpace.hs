@@ -78,6 +78,7 @@ module SimplIR.FeatureSpace
     , projectBoth
     , ProjectBothResult(..)
     , equivSpace
+    , eqSpace
     ) where
 
 import Control.DeepSeq
@@ -91,11 +92,13 @@ import Data.Coerce
 import Data.Foldable (forM_)
 import qualified Control.Foldl as F
 import Data.Kind
+import Data.Type.Equality
 import Data.Ix
 import qualified Data.List.NonEmpty as NE
 import Data.Tuple
 import Data.Maybe
 import GHC.Stack
+import Unsafe.Coerce (unsafeCoerce)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import qualified Data.Vector.Indexed as VI
@@ -339,17 +342,17 @@ map f (FeatureVec fspace x) = FeatureVec fspace $ VI.map f x
 project :: forall m f s s' a. (VU.Unbox a, Ord f, MonadFail m)
         => FeatureSpace f s -> FeatureSpace f s'
         -> m (FeatureVec f s a -> FeatureVec f s' a)
-project s1'@(Space _ s1) s2
-  | Just f <- s1' `equivSpace` s2 = return f
+project fs1@(Space _ s1) fs2
+  | Just f <- fs1 `equivSpace` fs2 = return f
   | otherwise = case mapping of
                   Right x  -> pure $ \v -> map (lookupIndex v . coerce) x
                   Left err -> fail err
   where
     --mapping :: Either String (FeatureVec f s' (FeatureIndex s))
     mapping :: Either String (FeatureVec f s' Int)
-    !mapping = runST $ runExceptT $ generateM s2 $ \f ->
-      case coerce $ M.lookup f s1 of
-        Just i -> pure i
+    !mapping = runST $ runExceptT $ generateM fs2 $ \f ->
+      case lookupFeatureIndex fs1 f of
+        Just (FeatureIndex i) -> pure i
         Nothing -> throwE $ "project: Feature not present"
 
 data ProjectBothResult f s1 s2 where
@@ -371,11 +374,25 @@ projectBoth s1 s2 =
 
 -- | Returns a constructive proof that two feature spaces have the same features
 -- in the same order.
-equivSpace :: (VU.Unbox a, Eq f)
+equivSpace :: forall f s s' a. (VU.Unbox a, Ord f)
            => FeatureSpace f s -> FeatureSpace f s'
            -> Maybe (FeatureVec f s a -> FeatureVec f s' a)
-equivSpace (Space s1 _) fs2@(Space s2 _)
-  | VI.vector s1 == VI.vector s2  = Just $ \(FeatureVec _ v) -> FeatureVec fs2 $ VI.fromVector (featureIndexBounds fs2) (VI.vector v)
+equivSpace fs1@(Space s1 _) fs2@(Space s2 _)
+  | Just Refl <- fs1 `eqSpace` fs2 = Just $ FeatureVec fs2 . getFeatureVec
+  | featureNameSet fs1 == featureNameSet fs2
+  = let mapping :: FeatureVec f s' Int
+        !mapping = runST $ generateM fs2 $ \f ->
+          case lookupFeatureIndex fs1 f of
+            Just (FeatureIndex i) -> pure i
+            Nothing -> error "equivSpace: Impossibl"
+    in Just $ \v -> map (lookupIndex v . coerce) mapping
+  | otherwise = Nothing
+
+eqSpace :: forall f s s'. (Eq f)
+        => FeatureSpace f s -> FeatureSpace f s'
+        -> Maybe (s :~: s')
+eqSpace (Space s1 _) fs2@(Space s2 _)
+  | VI.vector s1 == VI.vector s2  = Just (unsafeCoerce Refl)
   | otherwise = Nothing
 
 data FeatureStack f ss a where
