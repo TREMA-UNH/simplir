@@ -90,19 +90,21 @@ instance (Aeson.ToJSONKey k, Aeson.ToJSON v) => Aeson.ToJSON (Assocs k v) where
 instance (Aeson.FromJSONKey k, Aeson.FromJSON v) => Aeson.FromJSON (Assocs k v) where
     parseJSON v =
         case Aeson.fromJSONKey of
-            Aeson.FromJSONKeyValue f -> 
-                flip (Aeson.withArray "association list") v $ (fmap Assocs . mapM (fromPair f) . Data.Foldable.toList)
+            Aeson.FromJSONKeyValue f ->
+                let fromPair :: (Aeson.Value -> Aeson.Parser k) -> Aeson.Value -> Aeson.Parser (k, v)
+                    fromPair f pair = do
+                        (k,v) <- Aeson.parseJSON pair
+                        (,) <$> f k <*> Aeson.parseJSON v
+                in flip (Aeson.withArray "association list") v $ (fmap Assocs . mapM (fromPair f) . Data.Foldable.toList)
             Aeson.FromJSONKeyText f ->
-                flip (Aeson.withObject "association list") v $ (fmap Assocs . mapM (fromPair (\v -> Aeson.withText "key" (pure . f) v)) . Data.Foldable.toList)
+                flip (Aeson.withObject "association list") v $ (fmap Assocs . mapM (fromKV (pure . f)) . HM.toList)
             Aeson.FromJSONKeyTextParser f ->
-                flip (Aeson.withObject "association list") v $ (fmap Assocs . mapM (fromPair (\v -> Aeson.withText "key" f v)) . Data.Foldable.toList)
+                flip (Aeson.withObject "association list") v $ (fmap Assocs . mapM (fromKV f) . HM.toList)
             Aeson.FromJSONKeyCoerce _ ->
-                flip (Aeson.withObject "association list") v $ (fmap Assocs . mapM (fromPair (pure . unsafeCoerce)) . Data.Foldable.toList)
-      where
-        fromPair :: (Aeson.Value -> Aeson.Parser k) -> Aeson.Value -> Aeson.Parser (k, v)
-        fromPair f pair = do
-            (k,v) <- Aeson.parseJSON pair
-            (,) <$> f k <*> Aeson.parseJSON v
+                flip (Aeson.withObject "association list") v $ (fmap Assocs . mapM (fromKV (pure . unsafeCoerce)) .HM.toList)
+        where
+            fromKV :: (T.Text -> Aeson.Parser k) -> (T.Text, Aeson.Value) -> Aeson.Parser (k, v)
+            fromKV f (k,v) = (,) <$> f k <*> parseJSON v
 
 -- TODO also save feature space to ensure features idx don't change semantics
 instance (Ord f, Aeson.ToJSONKey f) => Aeson.ToJSON (Model f s) where
