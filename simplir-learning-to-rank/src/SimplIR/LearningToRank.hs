@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DeriveGeneric #-}
@@ -52,6 +53,8 @@ import SimplIR.Types.Relevance
 import SimplIR.Ranking as Ranking
 import SimplIR.Ranking.Evaluation
 import SimplIR.TrainUtils
+import Data.Aeson (FromJSON)
+import Data.Aeson.Types (ToJSON)
 
 type Score = Double
 
@@ -121,7 +124,8 @@ data MiniBatchParams = MiniBatchParams { miniBatchParamsBatchSteps :: Int   -- ^
                                        , miniBatchParamsBatchSize :: Int    -- ^ mini-batch size
                                        , miniBatchParamsEvalSteps :: Int    -- ^ mini-batches per evaluation cycle
                                        }
-                                       deriving Show
+  deriving (Show, Generic, FromJSON, ToJSON)
+  
 defaultMiniBatchParams :: MiniBatchParams
 defaultMiniBatchParams = MiniBatchParams 1 100 0
 
@@ -221,6 +225,8 @@ naiveCoordAscent' normalise obj gen0 w0
 -- improves runtime complexity at the cost of a slight approximation.
 data EvalCutoff = EvalNoCutoff
                 | EvalCutoffAt !Int
+  deriving (Show, Generic, FromJSON, ToJSON)
+
 
 coordAscent :: forall a f s qid relevance gen.
                (Random.RandomGen gen, Show qid, Show a, Show f)

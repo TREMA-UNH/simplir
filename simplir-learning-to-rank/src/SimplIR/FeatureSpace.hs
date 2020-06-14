@@ -34,6 +34,7 @@ module SimplIR.FeatureSpace
     , featureIndexes
     , lookupFeatureIndex
     , lookupFeatureName
+    , internFeatureName
     -- ** Manipulating feature spaces
     , mapFeatureNames
     -- * Feature vectors
@@ -160,13 +161,20 @@ featureIndexBounds = VI.bounds . fsIndexToFeature
 featureIndexes :: FeatureSpace f s -> [FeatureIndex s]
 featureIndexes = range . featureIndexBounds
 
+-- | Lookup the feature index in fspace from name.
 lookupFeatureIndex :: (Ord f, HasCallStack) => FeatureSpace f s -> f -> Maybe (FeatureIndex s)
 lookupFeatureIndex (Space _ m) = (`M.lookup` m)
 {-# INLINEABLE lookupFeatureIndex #-}
 
+-- | Lookup the feature name from index.
 lookupFeatureName :: HasCallStack => FeatureSpace f s -> FeatureIndex s -> f
 lookupFeatureName (Space v _) = (v VI.!)
 {-# INLINEABLE lookupFeatureName #-}
+
+-- |  Intern a feature name.
+internFeatureName :: Ord f => FeatureSpace f s -> f -> Maybe f
+internFeatureName fspace fname = lookupFeatureName fspace <$> lookupFeatureIndex fspace fname
+{-# INLINEABLE internFeatureName #-}
 
 unsafeFromFeatureList :: (Ord f) => [f] -> FeatureSpace f s
 unsafeFromFeatureList fnames = Space v m
