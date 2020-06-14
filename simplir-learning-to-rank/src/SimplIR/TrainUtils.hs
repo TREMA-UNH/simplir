@@ -10,7 +10,7 @@ module SimplIR.TrainUtils
     Folds(..)
   , FoldIdx
   , mkSequentialFolds
-  , kFolds
+  , trainKFolds
     -- * Restarts
   , Restarts(..)
   , RestartIdx
@@ -63,8 +63,9 @@ mkRestartSeeds = Restarts . unfoldr (Just . Random.split)
 
 -- TODO think about turning Fold[q] into Fold (S.Set q)
 
--- | Train a series of models under k-fold cross-validation.
-kFolds
+-- | Train a series of models under k-fold cross-validation. 
+--   Also takes care of proper train/test splitting
+trainKFolds
     :: forall q d r. (Eq q, Ord q)
     => (FoldIdx -> M.Map q d -> r)
        -- ^ a training function, producing a trained result from a
@@ -75,7 +76,7 @@ kFolds
        -- ^ partitioning of queries into folds
     -> Folds (M.Map q d, r)
        -- ^ the training result and set of test data for the fold
-kFolds train allData foldQueries =
+trainKFolds train allData foldQueries =
     fmap trainSingleFold (numberFolds foldQueries)
   where
     trainSingleFold :: (FoldIdx, [q]) -> (M.Map q d, r)
@@ -107,7 +108,7 @@ kFoldsAndRestarts
         -- ^ the training results and set of test data for the fold. The
         -- 'Restarts' for each fold is infinite.
 kFoldsAndRestarts train allData foldQueries gen0 =
-    kFolds train' allData foldQueries
+    trainKFolds train' allData foldQueries
   where
     train' :: FoldIdx -> M.Map q d -> Restarts r
     train' foldIdx trainData =

@@ -1,3 +1,4 @@
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -23,6 +24,7 @@ import SimplIR.LearningToRank
 import SimplIR.LearningToRankWrapper
 import qualified SimplIR.Format.TrecRunFile as Run
 import qualified SimplIR.Format.QRel as QRel
+import GHC.Generics (Generic)
 
 main :: IO ()
 main = do
@@ -33,6 +35,11 @@ modes :: Parser (IO ())
 modes = subparser $
         command "learn" (info learnMode mempty)
      <> command "predict" (info predictMode mempty)
+
+newtype FeatureName = FeatureName { getFeatureName :: T.Text }
+                    deriving stock (Ord, Eq, Show, Read, Generic)
+                    deriving newtype (ToJSON, FromJSON, ToJSONKey, FromJSONKey)
+
 
 type FeatureFiles = [(FeatureName, FilePath)]
 
