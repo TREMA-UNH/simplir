@@ -41,6 +41,7 @@ mkSequentialFolds k xs = Folds $ chunksOf foldLen xs
   where
     foldLen
       | len >= 2 * k = (len `div` k) + 1  -- usual case: prevents overpopulation of last fold, e.g. [1,2] [3,4] [5,6] [7]
+      | len < k   = 1
       | otherwise = len `div` k  -- to prevent last folds to be empty, accept overpopulation of last fold, e.g. [1] [2] [3] [4] [5,6,7]
     len = length xs
 
