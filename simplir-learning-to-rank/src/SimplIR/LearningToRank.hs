@@ -225,7 +225,7 @@ naiveCoordAscent' normalise obj gen0 w0
 -- improves runtime complexity at the cost of a slight approximation.
 data EvalCutoff = EvalNoCutoff
                 | EvalCutoffAt !Int
-  deriving (Show, Generic, FromJSON, ToJSON)
+  deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
 
 coordAscent :: forall a f s qid relevance gen.
