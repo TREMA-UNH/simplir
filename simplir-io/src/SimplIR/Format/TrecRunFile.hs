@@ -23,15 +23,18 @@ type Rank = Int
 type Score = Double
 type MethodName = T.Text
 
-data RankingEntry = RankingEntry { queryId       :: !QueryId
-                                 , documentName  :: !DocumentName
-                                 , documentRank  :: !Rank
-                                 , documentScore :: !Score
-                                 , methodName    :: !MethodName
-                                 }
+data RankingEntry' q d = RankingEntry { queryId   :: !q
+                                      , documentName  :: !d
+                                      , documentRank  :: !Rank
+                                      , documentScore :: !Score
+                                      , methodName    :: !MethodName
+                                      }
                   deriving (Show)
 
-instance NFData RankingEntry where
+
+type RankingEntry = RankingEntry' QueryId DocumentName
+
+instance NFData (RankingEntry' q d) where
     rnf r = r `seq` ()
 
 readRunFile :: FilePath -> IO [RankingEntry]
