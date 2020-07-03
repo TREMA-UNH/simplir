@@ -59,7 +59,8 @@ import Data.Aeson.Types (ToJSON)
 type Score = Double
 
 newtype WeightVec f s = WeightVec { getWeightVec :: FeatureVec f s Double }
-                    deriving (Show, Generic, NFData)
+                    deriving stock (Show, Generic)
+                    deriving newtype (NFData)
 
 -- | Returns 'Nothing' if vector is near zero magnitude.
 l2NormalizeWeightVec :: WeightVec f s -> Maybe (WeightVec f s)
@@ -78,17 +79,7 @@ stepFeature (Step dim delta) (WeightVec v) =
 type FRanking f s relevance a = [(a, FeatureVec f s Double, relevance)]
 
 
----
--- type FRanking f relevance a = [(a, relevance) , (FeatureVec f Double)]
--- type FRanking f relevance a = collection (a, relevance)  (FeatureVec f Double)
 
--- M.Map a (FeatureVec f Double, relevance)
---
--- rerank :: WeightVec f -> M.Map a (FeatureVec f Double) -> Ranking Score a
--- rerank :: WeightVec f -> Graph a (FeatureVec f Double) -> Ranking Score a
--- rerank :: WeightVec f -> collection a (FeatureVec f Double) -> Ranking Score a
---
----
 
 score :: WeightVec f s -> FeatureVec f s Double -> Score
 score (WeightVec w) f = w `FS.dot` f

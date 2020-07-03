@@ -40,6 +40,7 @@ data Entry query doc rel = Entry { queryId      :: !query
                                  , documentName :: !doc
                                  , relevance    :: !rel
                                  }
+    deriving (Show)
 
 class RelevanceScale rel where
     parseRelevance :: T.Text -> rel
