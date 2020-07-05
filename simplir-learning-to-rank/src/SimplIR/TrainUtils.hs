@@ -3,22 +3,26 @@
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DerivingVia #-}
 
 -- | Various utilities for iterative model training.
 module SimplIR.TrainUtils
   ( -- * Folds
     Folds(..)
-  , FoldIdx
+  , FoldIdx(..)
+  , indexedFolds
   , mkSequentialFolds
   , trainKFolds
     -- * Restarts
   , Restarts(..)
-  , RestartIdx
+  , RestartIdx(..)
+  , indexedRestarts
   , kFoldsAndRestarts
     -- * Mini-batching
   , miniBatched
   ) where
 
+import Control.Applicative
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.List
@@ -29,12 +33,13 @@ import System.Random as Random
 newtype Folds a = Folds { getFolds :: [a] }
                 deriving (Foldable, Functor, Traversable)
                 deriving newtype (NFData)
+                deriving Applicative via ZipList
 
 newtype FoldIdx = FoldIdx Int
                 deriving (Eq, Ord, Show, Enum)
 
-numberFolds :: Folds a -> Folds (FoldIdx, a)
-numberFolds (Folds xs) = Folds $ zip [FoldIdx 0..] xs
+indexedFolds :: Folds a -> Folds (FoldIdx, a)
+indexedFolds (Folds xs) = Folds $ zip [FoldIdx 0..] xs
 
 mkSequentialFolds :: Int -> [a] -> Folds [a]
 mkSequentialFolds k xs = Folds $ chunksOf foldLen xs
@@ -49,12 +54,13 @@ mkSequentialFolds k xs = Folds $ chunksOf foldLen xs
 newtype Restarts a = Restarts { getRestarts :: [a] }
                    deriving (Foldable, Functor, Traversable)
                    deriving newtype (NFData)
+                   deriving Applicative via ZipList
 
 newtype RestartIdx = RestartIdx Int
                    deriving (Eq, Ord, Show, Enum)
 
-numberRestarts :: Restarts a -> Restarts (RestartIdx, a)
-numberRestarts (Restarts xs) = Restarts $ zip [RestartIdx 0..] xs
+indexedRestarts :: Restarts a -> Restarts (RestartIdx, a)
+indexedRestarts (Restarts xs) = Restarts $ zip [RestartIdx 0..] xs
 
 mkRestartSeeds :: StdGen -> Restarts StdGen
 mkRestartSeeds = Restarts . unfoldr (Just . Random.split)
@@ -78,7 +84,7 @@ trainKFolds
     -> Folds (M.Map q d, r)
        -- ^ the training result and set of test data for the fold
 trainKFolds train allData foldQueries =
-    fmap trainSingleFold (numberFolds foldQueries)
+    fmap trainSingleFold (indexedFolds foldQueries)
   where
     trainSingleFold :: (FoldIdx, [q]) -> (M.Map q d, r)
     trainSingleFold (foldIdx, testQueries) =
@@ -114,7 +120,7 @@ kFoldsAndRestarts train allData foldQueries gen0 =
     train' :: FoldIdx -> M.Map q d -> Restarts r
     train' foldIdx trainData =
         fmap (\(restartIdx, gen) -> train foldIdx restartIdx gen trainData)
-             (numberRestarts gens)
+             (indexedRestarts gens)
 
     gens :: Restarts StdGen
     gens = mkRestartSeeds gen0
