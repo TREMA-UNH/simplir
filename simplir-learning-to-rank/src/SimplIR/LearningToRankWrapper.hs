@@ -22,6 +22,7 @@ module SimplIR.LearningToRankWrapper
     , rerankRankings'
     , untilConverged
     , defaultConvergence, relChangeBelow, dropIterations, maxIterations, ConvergenceCriterion
+    , fixFeatureNames, fixFeatureNames'
 
     ) where
 
@@ -64,6 +65,26 @@ modelFeatures :: Model f s -> FeatureSpace f s
 modelFeatures = FS.featureSpace . getWeightVec . modelWeights'
 
 
+-- | Transform features names/types in models. Helpful if serialization types are required.
+fixFeatureNames :: (Show g, Ord g, Ord f)
+                => (f -> Maybe g) ->  SomeModel f -> SomeModel g
+fixFeatureNames conv (SomeModel model) =
+    case FS.mapFeatures fspace conv of
+        FS.FeatureMapping fspace' proj ->
+            let weights' = proj (getWeightVec $ modelWeights' model)
+            in SomeModel (Model (WeightVec weights'))
+    where
+        fspace = FS.featureSpace $ getWeightVec $ modelWeights' model
+
+fixFeatureNames' :: forall f g s s'. (Show g, Ord g, Ord f)
+                => (f -> Maybe g) ->  Model f s -> SomeModel g
+fixFeatureNames' conv model =
+    case FS.mapFeatures fspace conv of
+        FS.FeatureMapping fspace' proj ->
+            let weights' = proj (getWeightVec $ modelWeights' model)
+            in SomeModel (Model (WeightVec weights'))
+    where
+        fspace = FS.featureSpace $ getWeightVec $ modelWeights' model
 
 
 -- ---------- JSON Serialization -------
