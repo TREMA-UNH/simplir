@@ -16,6 +16,7 @@ module Graph
 
     -- * construct graphs
     , graphFromEdges, graphFromEdgesAndSingletons, graphFromNeighbors, graphUnions
+    , toEdgesAndSingletons
     ) where
 
 import Control.DeepSeq
