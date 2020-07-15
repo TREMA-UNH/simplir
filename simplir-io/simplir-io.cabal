@@ -23,6 +23,7 @@ library
                        hashable >=1.2 && <1.4,
                        unordered-containers >=0.2 && <0.3,
                        bytestring,
+                       zlib >=0.6,
                        aeson >= 1.4,
                        simplir
   hs-source-dirs:      src

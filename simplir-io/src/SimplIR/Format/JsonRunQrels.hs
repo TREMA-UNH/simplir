@@ -25,6 +25,7 @@ import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.ByteString.Lazy.Char8 as BSL
 
+import qualified Codec.Compression.GZip as GZip
 
 
 newtype SerializedRankingEntry q d = SerializedRankingEntry { unserializeRankingEntry :: SimplirRun.RankingEntry' q d }
@@ -61,6 +62,16 @@ readTrecEvalRunFile qConv dConv fname =  do
     return $ fmap (mapFromRunEntry qConv dConv) runData
 
 
+readGzJsonLRunFile ::  forall q d
+                 . (Aeson.FromJSON q, Aeson.FromJSON d) 
+                 => FilePath -> IO (([SimplirRun.RankingEntry' q d]))
+readGzJsonLRunFile fname = do
+    bs <- fmap GZip.decompress $ BSL.readFile fname
+    let decodeRankingEntry :: BSL.ByteString -> IO (SimplirRun.RankingEntry' q d)
+        decodeRankingEntry bs = either fail (return . unserializeRankingEntry ) 
+                                $ Aeson.eitherDecode bs
+    mapM decodeRankingEntry (BSL.lines bs)
+
 readJsonLRunFile ::  forall q d
                  . (Aeson.FromJSON q, Aeson.FromJSON d) 
                  => FilePath -> IO (([SimplirRun.RankingEntry' q d]))
@@ -79,6 +90,17 @@ writeJsonLRunFile fname runEntries = do
     let lines :: [BSL.ByteString]
         lines = fmap (Aeson.encode . SerializedRankingEntry) $ runEntries
     BSL.writeFile fname $ BSL.unlines $ lines
+
+
+writeGzJsonLRunFile :: forall q d
+                  . (Aeson.ToJSON q, Aeson.ToJSON d)
+                  => FilePath -> [SimplirRun.RankingEntry' q d] -> IO()
+writeGzJsonLRunFile fname runEntries = do
+    let lines :: [BSL.ByteString]
+        lines = fmap (Aeson.encode . SerializedRankingEntry) $ runEntries
+    BSL.writeFile fname 
+        $ GZip.compressWith (GZip.defaultCompressParams { GZip.compressLevel = GZip.bestSpeed })  
+        $ BSL.unlines $ lines
 
 
 
