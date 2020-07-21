@@ -89,6 +89,7 @@ writeJsonLRunFile :: forall q d
 writeJsonLRunFile fname runEntries = do
     let lines :: [BSL.ByteString]
         lines = fmap (Aeson.encode . SerializedRankingEntry) $ runEntries
+    putStrLn  $ "Writing JsonL to "<> fname
     BSL.writeFile fname $ BSL.unlines $ lines
 
 
@@ -101,6 +102,7 @@ writeGzJsonLRunFile fname runEntries = do
     BSL.writeFile fname 
         $ GZip.compressWith (GZip.defaultCompressParams { GZip.compressLevel = GZip.bestSpeed })  
         $ BSL.unlines $ lines
+    putStrLn  $ "Writing JsonL.gz to "<> fname
 
 
 
@@ -173,6 +175,16 @@ readJsonLQrelFile fname = do
                                 $ Aeson.eitherDecode bs
     mapM decodeQrelEntry (BSL.lines bs)
 
+readGzJsonLQrelFile ::  forall q d 
+                 . (Aeson.FromJSON q, Aeson.FromJSON d) 
+                 => FilePath -> IO (([QRel.Entry q d QRel.IsRelevant]))
+readGzJsonLQrelFile fname = do
+    bs <- fmap GZip.decompress $ BSL.readFile fname
+    let decodeQrelEntry :: BSL.ByteString -> IO (QRel.Entry q d QRel.IsRelevant)
+        decodeQrelEntry bs = either fail (return . unserializeQrelEntry ) 
+                                $ Aeson.eitherDecode bs
+    mapM decodeQrelEntry (BSL.lines bs)
+
 
 writeJsonLQrelFile :: forall q d
                   . (Aeson.ToJSON q, Aeson.ToJSON d)
@@ -181,6 +193,16 @@ writeJsonLQrelFile fname qrelEntries = do
     let lines :: [BSL.ByteString]
         lines = fmap (Aeson.encode . SerializedQrelEntry) $ qrelEntries
     BSL.writeFile fname $ BSL.unlines $ lines
+
+writeGzJsonLQrelFile :: forall q d
+                  . (Aeson.ToJSON q, Aeson.ToJSON d)
+                  => FilePath -> [QRel.Entry q d QRel.IsRelevant] -> IO()
+writeGzJsonLQrelFile fname qrelEntries = do
+    let lines :: [BSL.ByteString]
+        lines = fmap (Aeson.encode . SerializedQrelEntry) $ qrelEntries
+    BSL.writeFile fname 
+        $ GZip.compressWith (GZip.defaultCompressParams { GZip.compressLevel = GZip.bestSpeed })  
+        $ BSL.unlines $ lines
 
 
 mapQrelEntry :: (q ->  QRel.QueryId) 
