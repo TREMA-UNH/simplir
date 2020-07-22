@@ -52,6 +52,14 @@ instance (Aeson.ToJSON q, Aeson.ToJSON d)
                                 "" -> []
                                 name -> ["method" Aeson..= name]
     
+parseJsonL :: forall a. Aeson.FromJSON a => BSL.ByteString -> [a]
+parseJsonL = zipWith f [1..] . BSL.lines
+  where
+    f :: Int -> BSL.ByteString -> a
+    f !lineNo bs = 
+      case Aeson.eitherDecode bs of
+        Left err -> error "parseJsonL"
+        Right x -> x
 
 
 readTrecEvalRunFile :: (SimplirRun.QueryId -> q ) -> (SimplirRun.DocumentName -> d)
@@ -61,27 +69,24 @@ readTrecEvalRunFile qConv dConv fname =  do
     runData <- SimplirRun.readRunFile fname
     return $ fmap (mapFromRunEntry qConv dConv) runData
 
+parseJsonLRunFile :: forall q d
+                 . (Aeson.FromJSON q, Aeson.FromJSON d) 
+                 => BSL.ByteString -> [SimplirRun.RankingEntry' q d]
+parseJsonLRunFile = map unserializeRankingEntry . parseJsonL
 
 readGzJsonLRunFile ::  forall q d
                  . (Aeson.FromJSON q, Aeson.FromJSON d) 
-                 => FilePath -> IO (([SimplirRun.RankingEntry' q d]))
+                 => FilePath -> IO [SimplirRun.RankingEntry' q d]
 readGzJsonLRunFile fname = do
     bs <- fmap GZip.decompress $ BSL.readFile fname
-    let decodeRankingEntry :: BSL.ByteString -> IO (SimplirRun.RankingEntry' q d)
-        decodeRankingEntry bs = either fail (return . unserializeRankingEntry ) 
-                                $ Aeson.eitherDecode bs
-    mapM decodeRankingEntry (BSL.lines bs)
+    return $ parseJsonLRunFile bs
 
 readJsonLRunFile ::  forall q d
                  . (Aeson.FromJSON q, Aeson.FromJSON d) 
-                 => FilePath -> IO (([SimplirRun.RankingEntry' q d]))
+                 => FilePath -> IO [SimplirRun.RankingEntry' q d]
 readJsonLRunFile fname = do
     bs <- BSL.readFile fname
-    let decodeRankingEntry :: BSL.ByteString -> IO (SimplirRun.RankingEntry' q d)
-        decodeRankingEntry bs = either fail (return . unserializeRankingEntry ) 
-                                $ Aeson.eitherDecode bs
-    mapM decodeRankingEntry (BSL.lines bs)
-
+    return $ parseJsonLRunFile bs
 
 writeJsonLRunFile :: forall q d
                   . (Aeson.ToJSON q, Aeson.ToJSON d)
@@ -165,26 +170,24 @@ readTrecEvalQrelFile convQ convD qrelFile = do
         qrelData' = [ QRel.Entry {queryId = (convQ queryId), documentName = (convD documentName), relevance = relevance} | QRel.Entry {..}  <- qrelData]
     return qrelData'
 
+parseJsonLQrel ::  forall q d 
+             . (Aeson.FromJSON q, Aeson.FromJSON d) 
+             => BSL.ByteString -> [QRel.Entry q d QRel.IsRelevant]
+parseJsonLQrel = map unserializeQrelEntry . parseJsonL
+
 readJsonLQrelFile ::  forall q d 
                  . (Aeson.FromJSON q, Aeson.FromJSON d) 
-                 => FilePath -> IO (([QRel.Entry q d QRel.IsRelevant]))
+                 => FilePath -> IO [QRel.Entry q d QRel.IsRelevant]
 readJsonLQrelFile fname = do
     bs <- BSL.readFile fname
-    let decodeQrelEntry :: BSL.ByteString -> IO (QRel.Entry q d QRel.IsRelevant)
-        decodeQrelEntry bs = either fail (return . unserializeQrelEntry ) 
-                                $ Aeson.eitherDecode bs
-    mapM decodeQrelEntry (BSL.lines bs)
+    return $ parseJsonLQrel bs
 
 readGzJsonLQrelFile ::  forall q d 
                  . (Aeson.FromJSON q, Aeson.FromJSON d) 
-                 => FilePath -> IO (([QRel.Entry q d QRel.IsRelevant]))
+                 => FilePath -> IO [QRel.Entry q d QRel.IsRelevant]
 readGzJsonLQrelFile fname = do
     bs <- fmap GZip.decompress $ BSL.readFile fname
-    let decodeQrelEntry :: BSL.ByteString -> IO (QRel.Entry q d QRel.IsRelevant)
-        decodeQrelEntry bs = either fail (return . unserializeQrelEntry ) 
-                                $ Aeson.eitherDecode bs
-    mapM decodeQrelEntry (BSL.lines bs)
-
+    return $ parseJsonLQrel bs
 
 writeJsonLQrelFile :: forall q d
                   . (Aeson.ToJSON q, Aeson.ToJSON d)
