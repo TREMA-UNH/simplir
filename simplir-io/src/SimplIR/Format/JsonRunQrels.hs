@@ -80,7 +80,10 @@ parseJsonLRunFile = map unserializeRankingEntry . parseJsonL
 readGzJsonLRunFile ::  forall q d
                  . (Aeson.FromJSON q, Aeson.FromJSON d) 
                  => FilePath -> IO (([SimplirRun.RankingEntry' q d]))
-readGzJsonLRunFile fname = handle handleDecompressionError $ do
+readGzJsonLRunFile fname = do
+ putStrLn $ "readGzJsonLRunFile " <> fname   
+
+ handle handleDecompressionError $ do
     bs <- fmap GZip.decompress $ BSL.readFile fname
     let decodeRankingEntry :: BSL.ByteString -> IO (SimplirRun.RankingEntry' q d)
         decodeRankingEntry bs = either fail (return . unserializeRankingEntry ) 
