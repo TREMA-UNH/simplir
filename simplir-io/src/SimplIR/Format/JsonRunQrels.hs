@@ -26,6 +26,9 @@ import qualified Data.ByteString.Lazy as BSL
 import qualified Data.ByteString.Lazy.Char8 as BSL
 
 import qualified Codec.Compression.GZip as GZip
+import Codec.Compression.Zlib.Internal (DecompressError)
+import Control.Exception (throwIO, handle)
+import System.IO (stderr, hPutStrLn)
 
 
 newtype SerializedRankingEntry q d = SerializedRankingEntry { unserializeRankingEntry :: SimplirRun.RankingEntry' q d }
@@ -76,10 +79,19 @@ parseJsonLRunFile = map unserializeRankingEntry . parseJsonL
 
 readGzJsonLRunFile ::  forall q d
                  . (Aeson.FromJSON q, Aeson.FromJSON d) 
-                 => FilePath -> IO [SimplirRun.RankingEntry' q d]
-readGzJsonLRunFile fname = do
+                 => FilePath -> IO (([SimplirRun.RankingEntry' q d]))
+readGzJsonLRunFile fname = handle handleDecompressionError $ do
     bs <- fmap GZip.decompress $ BSL.readFile fname
-    return $ parseJsonLRunFile bs
+    let decodeRankingEntry :: BSL.ByteString -> IO (SimplirRun.RankingEntry' q d)
+        decodeRankingEntry bs = either fail (return . unserializeRankingEntry ) 
+                                $ Aeson.eitherDecode bs
+    mapM decodeRankingEntry (BSL.lines bs)
+  where
+    handleDecompressionError :: DecompressError -> IO [SimplirRun.RankingEntry' q d]
+    handleDecompressionError err = do
+      hPutStrLn stderr $ (fname ++ ": Decompression error: " ++ show err)
+      throwIO err
+      
 
 readJsonLRunFile ::  forall q d
                  . (Aeson.FromJSON q, Aeson.FromJSON d) 
