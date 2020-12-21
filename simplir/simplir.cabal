@@ -30,6 +30,7 @@ library
       SimplIR.Bag
       SimplIR.BinaryFile
       SimplIR.Ranking
+      SimplIR.HashedRanking
       SimplIR.RetrievalModels.CorpusStats
       SimplIR.RetrievalModels.QueryLikelihood
       SimplIR.RetrievalModels.TfIdf

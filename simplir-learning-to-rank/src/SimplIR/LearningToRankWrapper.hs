@@ -48,6 +48,7 @@ import SimplIR.FeatureSpace (FeatureSpace, FeatureVec)
 import qualified SimplIR.FeatureSpace as FS
 import qualified SimplIR.Format.TrecRunFile as Run
 import qualified SimplIR.Format.QRel as QRel
+import qualified SimplIR.Ranking as Ranking
 
 type ConvergenceCriterion f s = ([(Double, WeightVec f s)] -> [(Double, WeightVec f s)])
 
@@ -279,13 +280,13 @@ rerankRankings :: Model f s
                -> M.Map Run.QueryId [(QRel.DocumentName, FeatureVec f s Double)]
                -> M.Map Run.QueryId (Ranking Score QRel.DocumentName)
 rerankRankings model featureData  =
-    fmap (rerank (modelWeights' model)) featureData
+    fmap (Ranking.fromList . SimplIR.LearningToRank.rescoreList (modelWeights' model)) featureData
 
 rerankRankings' :: Model f s
                 -> M.Map q [(docId, FeatureVec f s Double, rel)]
                 -> M.Map q (Ranking Score (docId, rel))
 rerankRankings' model featureData  =
-    fmap (rerank (modelWeights' model) . rearrangeTuples) featureData
+    fmap (Ranking.fromList . SimplIR.LearningToRank.rescoreList (modelWeights' model) . rearrangeTuples) featureData
   where rearrangeTuples = (fmap (\(d,f,r)-> ((d,r), f)))
 
 untilConverged :: (a -> a -> Bool) -> [a] -> [a]

@@ -3,7 +3,7 @@
 {-# LANGUAGE RankNTypes #-}
 
 module SimplIR.Ranking.Evaluation
-    ( ScoringMetric
+    ( ScoringMetric, PointScoringMetric
     , TotalRel
     , meanAvgPrec
     , avgPrec
@@ -23,12 +23,23 @@ import qualified SimplIR.Ranking as Ranking
 -- | A scoring method, taking a set of queries and their rankings to a score.
 type ScoringMetric rel qid = forall a. M.Map qid (Ranking Double (a,rel)) -> Double
 
+-- | A generic scoring method, taking a set of queries and their rankings to a score.
+type GenericScoringMetric rel qid = forall a. M.Map qid ([(Double, (a,rel))]) -> Double
+
+
+-- | A scoring method, taking a set of queries and their rankings to a score.
+type PointScoringMetric rel qid = forall a. M.Map qid ([ (Double, (a,rel))]) -> Double
+
+
+
+
 -- | The total number of relevant documents for a query.
 type TotalRel = Int
 
-meanAvgPrec :: (Ord rel)
+meanAvgPrec :: forall rel qid . (Ord rel)
             => (qid -> TotalRel) -> rel -> ScoringMetric rel qid
-meanAvgPrec totalRel relThresh = mean . map perQuery . M.toList
+meanAvgPrec totalRel relThresh rankings = 
+    mean $ map perQuery $ M.toList $ rankings
   where
     perQuery (qid, ranking) =
         fromMaybe 0 $ avgPrec relThresh (totalRel qid) ranking
