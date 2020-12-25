@@ -17,7 +17,7 @@ module SimplIR.LearningToRankWrapper
     , totalRelevantFromQRels
     , totalRelevantFromData
     , augmentWithQrels
-    , learnToRank
+    , learnToRank, learnToRankApprox
     , rerankRankings
     , rerankRankings'
     , untilConverged
@@ -224,7 +224,41 @@ augmentWithQrels qrel docFeatures =
     in franking
 
 
+-- | ApproximateMap for optimization 
+--  Use HashedRanking instead of Ranking and coordAscentHashed instead of CoordAscent
+learnToRankApprox :: forall f s query docId. (Ord query, Show query, Show docId, Show f)
+            => MiniBatchParams
+            -> ConvergenceCriterion f s
+            -> EvalCutoff
+            -> M.Map query [(docId, FeatureVec f s Double, IsRelevant)]
+            -> FeatureSpace f s
+            -> ApproxScoringMetric IsRelevant query
+            -> StdGen
+            -> (Model f s, Double)
+learnToRankApprox miniBatchParams convergence evalCutoff franking fspace metric gen0 =
+    let weights0 :: WeightVec f s
+        weights0 = WeightVec $ FS.repeat fspace 1
+        iters =
+            let optimise gen w trainData =
+                    map snd $ coordAscentHashed evalCutoff metric gen w trainData
 
+            -- # ToDo specialize miniBatchedAndEvaluated to work with HashedRankings        
+            in miniBatchedAndEvaluated miniBatchParams
+                 metric produceHashedRankingsForEval optimise gen0 weights0 franking   -- ToDo ### metric thinks its Ranking because miniBatchedAndEvaluated has it hard coded
+        errorDiag = show weights0 ++ ". Size training queries: "++ show (M.size franking)++ "."
+        checkNans (_,_) (b,_)
+           | isNaN b = error $ "Metric score is NaN. initial weights " ++ errorDiag
+           | otherwise = True
+        checkedConvergence :: [(Double, WeightVec f s)] -> [(Double, WeightVec f s)]
+        checkedConvergence = untilConverged checkNans . convergence
+        (evalScore, weights) = case checkedConvergence iters of
+           []          -> error $ "learning converged immediately. "++errorDiag
+           itersResult -> last itersResult
+    in (Model weights, evalScore)
+
+
+
+-- | Default implementaiton for learning to rank (using Ranking and exact MAP)
 learnToRank :: forall f s query docId. (Ord query, Show query, Show docId, Show f)
             => MiniBatchParams
             -> ConvergenceCriterion f s
@@ -240,8 +274,9 @@ learnToRank miniBatchParams convergence evalCutoff franking fspace metric gen0 =
         iters =
             let optimise gen w trainData =
                     map snd $ coordAscent evalCutoff metric gen w trainData
+            -- # ToDo specialize miniBatchedAndEvaluated to work with HashedRankings        
             in miniBatchedAndEvaluated miniBatchParams
-                 metric optimise gen0 weights0 franking
+                 metric produceRankingsForEval optimise gen0 weights0 franking
         errorDiag = show weights0 ++ ". Size training queries: "++ show (M.size franking)++ "."
         checkNans (_,_) (b,_)
            | isNaN b = error $ "Metric score is NaN. initial weights " ++ errorDiag

@@ -21,12 +21,14 @@ module SimplIR.LearningToRank
       -- * Computing rankings
     , rescoreList  
       -- * Scoring metrics
-    , ScoringMetric, PointScoringMetric
-    , meanAvgPrec
+    , ScoringMetric, ApproxScoringMetric, AbstractScoringMetric
+    , produceRankingsForEval, produceHashedRankingsForEval
+    , meanAvgPrec, meanAvgPrecApprox
       -- * Learning
     , FRanking
       -- ** Coordinate ascent optimisation
     , coordAscent
+    , coordAscentHashed
     , EvalCutoff(..)
     -- , naiveCoordAscent
     , naiveCoordAscent'
@@ -107,6 +109,7 @@ rescoreList  weight fRanking =
     [ (weight `score` feats, doc)
     | (doc, feats) <- fRanking
     ]  
+-- # INline?!?!
 
 
 data Step s = Step !(FS.FeatureIndex s) Double
@@ -138,11 +141,13 @@ defaultMiniBatchParams :: MiniBatchParams
 defaultMiniBatchParams = MiniBatchParams 1 100 0
 
 miniBatchedAndEvaluated
-    :: forall a f s qid relevance gen.
+    :: forall a f s qid relevance gen scoringMetric r.
        (Random.RandomGen gen, Show qid, Ord qid, Show a, Show relevance, Show f)
     => MiniBatchParams
-    -> ScoringMetric relevance qid
+    -> AbstractScoringMetric r relevance qid
        -- ^ evaluation metric
+    -> ProduceRankingsForEval r a relevance
+       -- ^ produceRankings
     -> (gen -> WeightVec f s -> M.Map qid (FRanking f s relevance a) -> [WeightVec f s])
        -- ^ optimiser (e.g. 'coordAscent')
     -> gen
@@ -150,20 +155,51 @@ miniBatchedAndEvaluated
     -> M.Map qid (FRanking f s relevance a)
     -> [(Score, WeightVec f s)]
        -- ^ list of evaluation iterates with evaluation metric
-miniBatchedAndEvaluated (MiniBatchParams batchSteps batchSize evalSteps) evalMetric
+miniBatchedAndEvaluated (MiniBatchParams batchSteps batchSize evalSteps) evalMetric produceRankings
                         optimise gen00 w00 fRankings =
     go $ miniBatched batchSteps batchSize optimise gen00 w00 fRankings
   where
     -- shuffle tuples for 'rerank'
     fRankings' = fmap (map (\(doc,feats,rel) -> ((doc,rel),feats))) fRankings
-
-    go :: [WeightVec f s] -> [(Score, WeightVec f s)]
     go iters =
         let w:rest = drop evalSteps iters
+            rankings ::  M.Map qid (r Double (a, relevance))
+            rankings = M.map (produceRankings .(rescoreList w)) fRankings'
+        in (evalMetric (rankings), w) : go rest  -- ## ToDo: want to get rid of "M.map Ranking.fromList" (move into eval metric!)
 
-            rankings :: M.Map qid ([(Score, (a, relevance))])
-            rankings = fmap (rescoreList w) fRankings'
-        in (evalMetric (M.map Ranking.fromList rankings), w) : go rest  -- ToDo: want to get rid of "M.map Ranking.fromList"
+
+-- ##### old
+
+-- miniBatchedAndEvaluated
+--     :: forall a f s qid relevance gen.
+--        (Random.RandomGen gen, Show qid, Ord qid, Show a, Show relevance, Show f)
+--     => MiniBatchParams
+--     -> GenericScoringMetric relevance qid
+--        -- ^ evaluation metric
+--     -> (gen -> WeightVec f s -> M.Map qid (FRanking f s relevance a) -> [WeightVec f s])
+--        -- ^ optimiser (e.g. 'coordAscent')
+--     -> gen
+--     -> WeightVec f s  -- ^ initial weights
+--     -> M.Map qid (FRanking f s relevance a)
+--     -> [(Score, WeightVec f s)]
+--        -- ^ list of evaluation iterates with evaluation metric
+-- miniBatchedAndEvaluated (MiniBatchParams batchSteps batchSize evalSteps) evalMetric 
+--                         optimise gen00 w00 fRankings =
+--     go $ miniBatched batchSteps batchSize optimise gen00 w00 fRankings
+--   where
+--     -- shuffle tuples for 'rerank'
+--     fRankings' = fmap (map (\(doc,feats,rel) -> ((doc,rel),feats))) fRankings
+
+--     go :: [WeightVec f s] -> [(Score, WeightVec f s)]
+--     go iters =
+--         let w:rest = drop evalSteps iters
+
+--             rankings :: M.Map qid ([(Score, (a, relevance))])
+--             rankings = fmap (rescoreList w) fRankings'
+--         in (evalMetric (rankings), w) : go rest  -- ## ToDo: want to get rid of "M.map Ranking.fromList" (move into eval metric!)
+--         -- in (evalMetric (M.map Ranking.fromList rankings), w) : go rest  -- ## ToDo: want to get rid of "M.map Ranking.fromList" (move into eval metric!)
+
+-- #################
 
 
 -- naiveCoordAscent
@@ -281,10 +317,10 @@ coordAscentGeneric :: forall r a f s qid relevance gen.
                   -> r Score ((a, FeatureVec f s Double), relevance)) 
                -- ^ rerank_r
 
-             -> (forall a b a' b'. (VU.Unbox a, VU.Unbox a', Ord a')   => (a -> b -> (a', b')) -> r a b -> r a' b')
+             -> (forall score0 b score1 b'. (VU.Unbox score0, VU.Unbox score1, Real score0, Real score1, Ord score1, Fractional score0, Fractional score1)   => (score0 -> b -> (score1, b')) -> r score0 b -> r score1 b')
                -- ^ mapRanking_r
 
-             -> (forall a b a' b'. (VU.Unbox a, VU.Unbox a', Ord a')   => Int -> (a -> b -> (a', b')) -> r a b -> r a' b')
+             -> (forall score0 b score1 b'. (VU.Unbox score0, VU.Unbox score1, Real score0, Real score1, Ord score1, Fractional score0, Fractional score1)   => Int -> (score0 -> b -> (score1, b')) -> r score0 b -> r score1 b')
               -- ^ mapRankingK_r
 
             --  -> [(Double, a)] -> r Double a 
@@ -359,10 +395,10 @@ coordAscentGeneric
 
         !cachedScoredRankings = stepScorerRankings evalCutoff
 
-        mapEvalRanking :: forall a b a' b'. (VU.Unbox a, VU.Unbox a', Ord a')
+        mapEvalRanking :: forall score0 b score1 b'. (VU.Unbox score0, VU.Unbox score1, Ord score1, Real score0, Real score1, Fractional score0, Fractional score1)
                        => EvalCutoff
-                       -> (a -> b -> (a', b'))
-                       -> r a b -> r a' b'
+                       -> (score0 -> b -> (score1, b'))
+                       -> r score0 b -> r score1 b'
         mapEvalRanking (EvalCutoffAt k) = mapRankingK_r k
         mapEvalRanking EvalNoCutoff = mapRanking_r
 

@@ -175,3 +175,4 @@ rescore :: (VU.Unbox score, VU.Unbox score', Ord score')
         -> Ranking score' b
 rescore f = mapRanking (const f)
 {-# INLINE rescore #-}
+

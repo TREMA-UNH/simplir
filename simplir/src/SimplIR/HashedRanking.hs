@@ -30,6 +30,8 @@ module SimplIR.HashedRanking
     -- , mapMaybe
     -- , filter
     , rescore
+      -- ** Info for Eval measures
+    , bucketCounts  
     ) where
 
 import Control.DeepSeq
@@ -43,11 +45,13 @@ import qualified Data.Map.Strict as M
 import Data.Ord
 import Prelude hiding (filter)
 import Data.Foldable (Foldable(foldl'))
+import Debug.Trace as Debug
 
 -- | A convenient alias for shortening @SPECIALISE@ pragmas.
 -- type V = VH.Vector VU.Vector V.Vector
 
 type Bucket score a = VH.Vector VU.Vector V.Vector (score, a)
+type BucketBuilder score a = [(score, a)]
 
 -- | A nearly-sorted list of items and their scores
 --  All elements are hashed into an ordered list of buckets
@@ -55,20 +59,7 @@ type Bucket score a = VH.Vector VU.Vector V.Vector (score, a)
 -- Howver, there are no guarantees on the order of elements within a bucket.
 newtype HashedRanking score a = HashedRanking (M.Map score (Bucket score a) )
 
-
--- | insert a single scored element into the hashed ranking. 
--- | (Warm up test code ... delete?)
-insert :: forall score a . (Ord score, VG.Vector VU.Vector score) 
-       => score ->  a  -> HashedRanking score a -> HashedRanking score a
-insert score e (HashedRanking hashedRanking) =
-    HashedRanking $ 
-      case M.lookupGT score hashedRanking of
-        Nothing -> error " larger than any key"
-        Just (key, _ ) -> M.alter (prependBucket score e)  key hashedRanking  
-
-  where prependBucket :: score -> a -> Maybe (Bucket score a) -> Maybe (Bucket score a)
-        prependBucket score1 elem1 (Just lst) = Just ( (score1,elem1) `VG.cons` lst)
-        prependBucket score1 elem1 Nothing = Just (VG.singleton (score1, elem1))
+type HashedRankingBuilder score a = M.Map score (BucketBuilder score a)
 
 
 -- | toList emits a roughly-sorted ranking
@@ -124,6 +115,15 @@ emptyWithBuckets scores =
         | score <- scores
         ]
 
+-- | An empty 'HashedRanking', preseeded with known buckets
+emptyBuilderWithBuckets :: (Ord score, Real score, Fractional score) => [score]  -> HashedRankingBuilder score a
+emptyBuilderWithBuckets scores =
+      M.fromList
+      $ [ (score, [])
+        | score <- (scores <> [1/0])
+        ]
+
+
 
 -- -- | @fromVector xs@ builds a ranking from entries of an unsorted vector @xs@.
 -- fromVector :: (VU.Unbox score, Ord score)
@@ -145,34 +145,60 @@ emptyWithBuckets scores =
 -- {-# SPECIALISE fromVectorK :: Int -> V (Float, a) -> HashedRanking Float a #-}
 
 -- | @fromSortedVector xs@ builds a ranking from entries of a sorted vector @xs@.
-fromSortedVector :: forall score a. (VU.Unbox score, Ord score)
+fromSortedVector :: forall score a. (VU.Unbox score, Ord score, Real score, Fractional score)
                  => VH.Vector VU.Vector V.Vector (score, a)
                  -> HashedRanking score a
 fromSortedVector vec =
   fromVector vec
 
 
-fromVector :: forall score a. (VU.Unbox score, Ord score)
+fromVector :: forall score a. (VU.Unbox score, Ord score, Real score, Fractional score)
                  => VH.Vector VU.Vector V.Vector (score, a)
                  -> HashedRanking score a
 fromVector vec =
-  let total :: Int
+  let elements :: BucketBuilder score a
+      elements = VG.toList vec
+      total :: Int
       total = VH.length vec
+      -- scoreVec :: VG.Vector score
+      scoreVec = VH.projectFst vec
       offsets :: [Int] 
-      offsets =  fmap (total `div` ) $ [1..10]
+      offsets =  fmap (total `div` ) $ [1..3]
+      bla = Debug.trace (show offsets) $ ()
+      -- buckets :: [score]
+      -- buckets = [ score
+      --           | offset <- offsets
+      --           , let (score, _) = vec `VG.!` offset
+      --           ]
+      (anyScore:_) = VU.toList $ VU.take 1 scoreVec
       buckets :: [score]
-      buckets = [ score
-                | offset <- offsets
-                , let (score, _) = vec VH.! offset
-                ]
-      emptyHashedRanking :: HashedRanking score a         
-      emptyHashedRanking = emptyWithBuckets buckets
-      filledHashedRanking :: HashedRanking score a         
-      filledHashedRanking = VG.foldl' (\accum (score, e)  -> insert score e accum ) emptyHashedRanking vec          
+      buckets = (VU.toList $ VU.take 3 scoreVec) ++ ([anyScore/0])
+      emptyHashedRanking :: HashedRankingBuilder score a         
+      emptyHashedRanking = emptyBuilderWithBuckets buckets
+      builder :: HashedRankingBuilder score a         
+      builder = foldl' (\accum (score, e)  -> insert score e accum ) emptyHashedRanking $ elements         
+
+      filledHashedRanking = HashedRanking $ M.map VG.fromList builder
   in filledHashedRanking
 
+  where -- | insert a single scored element into the hashed ranking. 
+        -- | (Warm up test code ... delete?)
+        insert :: forall score a . (Ord score) 
+              => score ->  a  -> HashedRankingBuilder score a -> HashedRankingBuilder score a
+        insert score e hashedRanking =
+              case M.lookupGT score hashedRanking of
+                Nothing -> error $ " larger than any key."
+                Just (key, _ ) -> M.alter (prependBucket score e)  key hashedRanking  
+
+          where prependBucket :: score -> a -> Maybe (BucketBuilder score a) -> Maybe (BucketBuilder score a)
+                prependBucket score1 elem1 (Just lst) = Just ( (score1,elem1) : lst)
+                prependBucket score1 elem1 Nothing = Just ([(score1, elem1)])
+
+
+
+
 -- | @fromList xs@ builds a ranking from entries of an unsorted list @xs@.
-fromList :: (VU.Unbox score, Ord score) => [(score, a)] -> HashedRanking score a
+fromList :: (VU.Unbox score, Ord score, Real score,Fractional score) => [(score, a)] -> HashedRanking score a
 fromList list =
   fromVector $ VH.fromList list
   
@@ -189,7 +215,7 @@ fromList list =
 -- {-# SPECIALISE fromListK :: Int -> [(Float, a)] -> HashedRanking Float a #-}
 
 -- | @fromSortedList xs@ builds a ranking from entries of a sorted list @xs@.
-fromSortedList :: (VU.Unbox score, Ord score) => [(score, a)] -> HashedRanking score a
+fromSortedList :: (VU.Unbox score, Ord score, Real score,Fractional score) => [(score, a)] -> HashedRanking score a
 fromSortedList list = fromList list
 
 -- toSortedList :: (VU.Unbox score) => HashedRanking score a -> [(score, a)]
@@ -217,7 +243,7 @@ fromSortedList list = fromList list
 --   where g (s,x) = fmap (\y -> (s,y)) (f x)
 
 -- | Map both scores and items, resorting afterwards to ensure order.
-mapHashedRanking :: (VU.Unbox score, VU.Unbox score', Ord score')
+mapHashedRanking :: (VU.Unbox score, VU.Unbox score', Ord score', Real score',Fractional score')
            => (score -> a -> (score', b))
            -> HashedRanking score  a
            -> HashedRanking score' b
@@ -227,7 +253,7 @@ mapHashedRanking f hashedRanking =  fromList $ fmap (uncurry f) $ toList hashedR
 {-# SPECIALISE mapHashedRanking :: (Float -> a -> (Float, b))
                           -> HashedRanking Float a -> HashedRanking Float b #-}
 
-mapHashedRankingK :: (VU.Unbox score, VU.Unbox score', Ord score')
+mapHashedRankingK :: (VU.Unbox score, VU.Unbox score', Ord score', Real score',Fractional score')
             => Int
             -> (score -> a -> (score', b))
             -> HashedRanking score  a
@@ -243,9 +269,19 @@ mapHashedRankingK _k f hashedRanking =
                            -> HashedRanking Float a -> HashedRanking Float b #-}
 
 -- | Recompute a 'HashedRanking'\'s scores.
-rescore :: (VU.Unbox score, VU.Unbox score', Ord score')
+rescore :: (VU.Unbox score, VU.Unbox score', Ord score', Real score',Fractional score')
         => (a -> (score', b))
         -> HashedRanking score  a
         -> HashedRanking score' b
 rescore f = mapHashedRanking (const f)
 {-# INLINE rescore #-}
+
+
+bucketCounts :: (VG.Vector VU.Vector score) 
+             => (a -> Bool) -> HashedRanking score a -> [(score, (Int,Int))]
+bucketCounts  isRel (HashedRanking hashedRanking) =
+    [ (key, (n,r))
+    | (key, bucket) <- M.toDescList hashedRanking
+    , let n = VG.length bucket
+    , let r = VG.length $ VG.filter (\(_, a) -> isRel a) bucket
+    ]
