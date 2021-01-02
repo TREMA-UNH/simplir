@@ -47,6 +47,7 @@ import Prelude hiding (filter)
 import Data.Foldable (Foldable(foldl'))
 import Debug.Trace as Debug
 
+import qualified SimplIR.Ranking as Ranking
 -- | A convenient alias for shortening @SPECIALISE@ pragmas.
 -- type V = VH.Vector VU.Vector V.Vector
 
@@ -118,9 +119,9 @@ emptyWithBuckets scores =
 -- | An empty 'HashedRanking', preseeded with known buckets
 emptyBuilderWithBuckets :: (Ord score, Real score, Fractional score) => [score]  -> HashedRankingBuilder score a
 emptyBuilderWithBuckets scores =
-      M.fromList
+      M.fromDescList
       $ [ (score, [])
-        | score <- (scores <> [1/0])
+        | score <- scores
         ]
 
 
@@ -156,23 +157,21 @@ fromVector :: forall score a. (VU.Unbox score, Ord score, Real score, Fractional
                  => VH.Vector VU.Vector V.Vector (score, a)
                  -> HashedRanking score a
 fromVector vec =
-  let elements :: BucketBuilder score a
-      elements = VG.toList vec
-      total :: Int
-      total = VH.length vec
-      -- scoreVec :: VG.Vector score
-      scoreVec = VH.projectFst vec
-      offsets :: [Int] 
-      offsets =  fmap (total `div` ) $ [1..3]
-      bla = Debug.trace (show offsets) $ ()
-      -- buckets :: [score]
-      -- buckets = [ score
-      --           | offset <- offsets
-      --           , let (score, _) = vec `VG.!` offset
-      --           ]
-      (anyScore:_) = VU.toList $ VU.take 1 scoreVec
+  -- let elements :: BucketBuilder score a
+      -- elements = VG.toList vec
+  let rankedVec :: VH.Vector VU.Vector V.Vector (score, a)
+      rankedVec = Ranking.toSortedVector $ Ranking.fromVector vec 
+
       buckets :: [score]
-      buckets = (VU.toList $ VU.take 3 scoreVec) ++ ([anyScore/0])
+      buckets = VG.toList $ VH.projectFst rankedVec
+  in fromUnsortedWithBuckets buckets $ VG.toList rankedVec      
+
+fromUnsortedWithBuckets ::  forall score a. (VU.Unbox score, Ord score, Real score, Fractional score) 
+    => [score] -> BucketBuilder score a ->  HashedRanking score a
+fromUnsortedWithBuckets scores elements =
+  let (anyScore: _) = scores
+
+      buckets = (anyScore/0) : scores
       emptyHashedRanking :: HashedRankingBuilder score a         
       emptyHashedRanking = emptyBuilderWithBuckets buckets
       builder :: HashedRankingBuilder score a         
@@ -247,7 +246,13 @@ mapHashedRanking :: (VU.Unbox score, VU.Unbox score', Ord score', Real score',Fr
            => (score -> a -> (score', b))
            -> HashedRanking score  a
            -> HashedRanking score' b
-mapHashedRanking f hashedRanking =  fromList $ fmap (uncurry f) $ toList hashedRanking  
+mapHashedRanking f hashedRanking =  
+    fromList $ fmap (uncurry f) $ toList hashedRanking  
+-- Idea: traverse over the map, keep track of lists above and below. 
+-- rescore, add elements with increased/decreased score one list up/down
+-- Add count stats to each bucket, so we only need to take care of the counts (rather than elements)
+
+
 {-# SPECIALISE mapHashedRanking :: (Double -> a -> (Double, b))
                           -> HashedRanking Double a -> HashedRanking Double b #-}
 {-# SPECIALISE mapHashedRanking :: (Float -> a -> (Float, b))
@@ -268,7 +273,7 @@ mapHashedRankingK _k f hashedRanking =
 {-# SPECIALISE mapHashedRankingK :: Int -> (Float -> a -> (Float, b))
                            -> HashedRanking Float a -> HashedRanking Float b #-}
 
--- | Recompute a 'HashedRanking'\'s scores.
+-- | Recompute a 'HashedRanking'\'s scores - reuse same data structure.
 rescore :: (VU.Unbox score, VU.Unbox score', Ord score', Real score',Fractional score')
         => (a -> (score', b))
         -> HashedRanking score  a
