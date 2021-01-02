@@ -97,6 +97,7 @@ rerank weight fRanking =
     | (doc, feats) <- fRanking
     ]
 
+-- | create new HashedRanking from a new unsorted ranking
 reHashRank :: WeightVec f s -> [(a, FeatureVec f s Double)] -> HashedRanking Score a
 reHashRank weight fRanking = 
     HashedRanking.fromList
