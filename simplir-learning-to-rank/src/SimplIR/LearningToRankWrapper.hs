@@ -41,6 +41,19 @@ import Debug.Trace
 import Unsafe.Coerce (unsafeCoerce)
 import qualified Data.Aeson.Types as Aeson
 import Data.Aeson as Aeson
+    ( pairs,
+      withArray,
+      withObject,
+      object,
+      FromJSON(parseJSON),
+      FromJSONKey(fromJSONKey),
+      FromJSONKeyFunction(FromJSONKeyCoerce, FromJSONKeyValue,
+                          FromJSONKeyText, FromJSONKeyTextParser),
+      Value,
+      KeyValue((.=)),
+      ToJSON(toJSON, toEncoding),
+      ToJSONKey(toJSONKey),
+      ToJSONKeyFunction(ToJSONKeyValue, ToJSONKeyText) )
 
 
 import SimplIR.LearningToRank
@@ -54,6 +67,7 @@ type ConvergenceCriterion f s = ([(Double, WeightVec f s)] -> [(Double, WeightVe
 
 data SomeModel f where
     SomeModel :: forall f s. Model f s -> SomeModel f
+instance NFData f => NFData (SomeModel f) where rnf (SomeModel m) = rnf m
 
 newtype Model f s = Model { modelWeights' :: WeightVec f s }
                   deriving (Show, Generic)
