@@ -19,7 +19,8 @@ module SimplIR.LearningToRank
     , score
       -- * Features
       -- * Computing rankings
-    , rescoreList  
+    , rescoreList
+    , rerank  
       -- * Scoring metrics
     , ScoringMetric, ApproxScoringMetric, AbstractScoringMetric
     , produceRankingsForEval, produceHashedRankingsForEval
