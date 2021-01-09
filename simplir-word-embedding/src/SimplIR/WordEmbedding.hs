@@ -1,4 +1,7 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -50,6 +53,7 @@ import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Indexed as VI
 import Control.Monad.Primitive
 import GHC.TypeLits
+import GHC.Generics (Generic)
 
 -- | A embedding dimension index.
 newtype EmbeddingDim n = EmbeddingDim Int
@@ -61,7 +65,8 @@ instance KnownNat n => Bounded (EmbeddingDim n) where
 
 -- | A embedding word vector.
 newtype WordVec (n :: Nat) = WordVec { unWordVec :: VI.Vector VU.Vector (EmbeddingDim n) Float }
-                           deriving (Show)
+                           deriving (Show, Generic)
+                           deriving anyclass (NFData)
 
 -- | Normalise (in the L2 sense) a word vector.
 normaliseWordVec :: WordVec n -> WordVec n
