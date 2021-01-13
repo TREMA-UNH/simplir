@@ -18,6 +18,8 @@ module SimplIR.TrainUtils
   , RestartIdx(..)
   , indexedRestarts
   , kFoldsAndRestarts
+  , mkRestartSeeds
+  , bestRestartBy, takeRestarts
     -- * Mini-batching
   , miniBatched
   ) where
@@ -50,6 +52,8 @@ mkSequentialFolds k xs = Folds $ chunksOf foldLen xs
       | otherwise = len `div` k  -- to prevent last folds to be empty, accept overpopulation of last fold, e.g. [1] [2] [3] [4] [5,6,7]
     len = length xs
 
+
+
 -- | A list of restarts.
 newtype Restarts a = Restarts { getRestarts :: [a] }
                    deriving (Foldable, Functor, Traversable)
@@ -64,6 +68,16 @@ indexedRestarts (Restarts xs) = Restarts $ zip [RestartIdx 0..] xs
 
 mkRestartSeeds :: StdGen -> Restarts StdGen
 mkRestartSeeds = Restarts . unfoldr (Just . Random.split)
+
+takeRestarts :: Int -> Restarts a -> Restarts a
+takeRestarts n (Restarts restarts) =
+  Restarts (take n restarts)
+
+bestRestartBy :: (a -> a -> Ordering) -> Restarts a -> a
+bestRestartBy f = maximumBy f
+
+
+
 
 -- r might be: [(Model, Double)]
 
