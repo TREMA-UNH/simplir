@@ -66,12 +66,6 @@ let
         pipes-interleave = doJailbreak (super.callHackage "pipes-interleave" "1.1.3" {});
         html-parse = self.callCabal2nix "html-parse" ./vendor/html-parse {};
         b-tree = doJailbreak (self.callHackage "b-tree" "0.1.4" {});
-        log-domain = self.callCabal2nix "log-domain" (fetchFromGitHub {
-          owner = "ekmett";
-          repo = "log-domain";
-          rev = "f0b5e8528965ba1cf8a2f47ea8b2750285914b6d";
-          sha256 = "0d46bkymf8sz01cq4pizrs5dn0xn5yd3chqgczbad4yaqjridjl7";
-        }) {};
         warc = self.callCabal2nix "warc" (fetchFromGitHub {
           owner = "bgamari";
           repo = "warc";
