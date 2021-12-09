@@ -46,7 +46,7 @@ data PostingIndex term p = PostingIndex { _metadata :: !Metadata
                                         , postingIndex :: !(CL.CborList (TermPostings term p))
                                         }
 
-data TermPostings term p = TermPostings { termPostingsTerm    :: ! term
+data TermPostings term p = TermPostings { termPostingsTerm    :: !term
                                         , termPostingsChunks' :: !(ELC.EncodedList (PostingsChunk p))
                                         }
                          deriving (Show)
