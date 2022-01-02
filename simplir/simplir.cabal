@@ -30,6 +30,7 @@ library
       SimplIR.Bag
       SimplIR.BinaryFile
       SimplIR.Ranking
+      SimplIR.HashedRanking
       SimplIR.RetrievalModels.CorpusStats
       SimplIR.RetrievalModels.QueryLikelihood
       SimplIR.RetrievalModels.TfIdf
@@ -55,6 +56,7 @@ library
 
   build-depends:
       base >=4.8 && <4.15,
+      ghc-prim,
       template-haskell,
       pipes-bytestring >=2.1 && <2.2,
       pipes,

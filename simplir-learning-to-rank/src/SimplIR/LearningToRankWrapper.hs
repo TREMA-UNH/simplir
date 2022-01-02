@@ -17,11 +17,12 @@ module SimplIR.LearningToRankWrapper
     , totalRelevantFromQRels
     , totalRelevantFromData
     , augmentWithQrels
-    , learnToRank
+    , learnToRank, learnToRankApprox
     , rerankRankings
     , rerankRankings'
     , untilConverged
     , defaultConvergence, relChangeBelow, dropIterations, maxIterations, ConvergenceCriterion
+    , fixFeatureNames, fixFeatureNames'
 
     ) where
 
@@ -40,6 +41,19 @@ import Debug.Trace
 import Unsafe.Coerce (unsafeCoerce)
 import qualified Data.Aeson.Types as Aeson
 import Data.Aeson as Aeson
+    ( pairs,
+      withArray,
+      withObject,
+      object,
+      FromJSON(parseJSON),
+      FromJSONKey(fromJSONKey),
+      FromJSONKeyFunction(FromJSONKeyCoerce, FromJSONKeyValue,
+                          FromJSONKeyText, FromJSONKeyTextParser),
+      Value,
+      KeyValue((.=)),
+      ToJSON(toJSON, toEncoding),
+      ToJSONKey(toJSONKey),
+      ToJSONKeyFunction(ToJSONKeyValue, ToJSONKeyText) )
 
 
 import SimplIR.LearningToRank
@@ -47,11 +61,13 @@ import SimplIR.FeatureSpace (FeatureSpace, FeatureVec)
 import qualified SimplIR.FeatureSpace as FS
 import qualified SimplIR.Format.TrecRunFile as Run
 import qualified SimplIR.Format.QRel as QRel
+import qualified SimplIR.Ranking as Ranking
 
 type ConvergenceCriterion f s = ([(Double, WeightVec f s)] -> [(Double, WeightVec f s)])
 
 data SomeModel f where
     SomeModel :: forall f s. Model f s -> SomeModel f
+instance NFData f => NFData (SomeModel f) where rnf (SomeModel m) = rnf m
 
 newtype Model f s = Model { modelWeights' :: WeightVec f s }
                   deriving (Show, Generic)
@@ -64,6 +80,26 @@ modelFeatures :: Model f s -> FeatureSpace f s
 modelFeatures = FS.featureSpace . getWeightVec . modelWeights'
 
 
+-- | Transform features names/types in models. Helpful if serialization types are required.
+fixFeatureNames :: (Show g, Ord g, Ord f)
+                => (f -> Maybe g) ->  SomeModel f -> SomeModel g
+fixFeatureNames conv (SomeModel model) =
+    case FS.mapFeatures fspace conv of
+        FS.FeatureMapping fspace' proj ->
+            let weights' = proj (getWeightVec $ modelWeights' model)
+            in SomeModel (Model (WeightVec weights'))
+    where
+        fspace = FS.featureSpace $ getWeightVec $ modelWeights' model
+
+fixFeatureNames' :: forall f g s s'. (Show g, Ord g, Ord f)
+                => (f -> Maybe g) ->  Model f s -> SomeModel g
+fixFeatureNames' conv model =
+    case FS.mapFeatures fspace conv of
+        FS.FeatureMapping fspace' proj ->
+            let weights' = proj (getWeightVec $ modelWeights' model)
+            in SomeModel (Model (WeightVec weights'))
+    where
+        fspace = FS.featureSpace $ getWeightVec $ modelWeights' model
 
 
 -- ---------- JSON Serialization -------
@@ -202,7 +238,41 @@ augmentWithQrels qrel docFeatures =
     in franking
 
 
+-- | ApproximateMap for optimization 
+--  Use HashedRanking instead of Ranking and coordAscentHashed instead of CoordAscent
+learnToRankApprox :: forall f s query docId. (Ord query, Show query, Show docId, Show f)
+            => MiniBatchParams
+            -> ConvergenceCriterion f s
+            -> EvalCutoff
+            -> M.Map query [(docId, FeatureVec f s Double, IsRelevant)]
+            -> FeatureSpace f s
+            -> ApproxScoringMetric IsRelevant query
+            -> StdGen
+            -> (Model f s, Double)
+learnToRankApprox miniBatchParams convergence evalCutoff franking fspace metric gen0 =
+    let weights0 :: WeightVec f s
+        weights0 = WeightVec $ FS.repeat fspace 1
+        iters =
+            let optimise gen w trainData =
+                    map snd $ coordAscentHashed evalCutoff metric gen w trainData
 
+            -- # ToDo specialize miniBatchedAndEvaluated to work with HashedRankings        
+            in miniBatchedAndEvaluated miniBatchParams
+                 metric produceHashedRankingsForEval optimise gen0 weights0 franking   -- ToDo ### metric thinks its Ranking because miniBatchedAndEvaluated has it hard coded
+        errorDiag = show weights0 ++ ". Size training queries: "++ show (M.size franking)++ "."
+        checkNans (_,_) (b,_)
+           | isNaN b = error $ "Metric score is NaN. initial weights " ++ errorDiag
+           | otherwise = True
+        checkedConvergence :: [(Double, WeightVec f s)] -> [(Double, WeightVec f s)]
+        checkedConvergence = untilConverged checkNans . convergence
+        (evalScore, weights) = case checkedConvergence iters of
+           []          -> error $ "learning converged immediately. "++errorDiag
+           itersResult -> last itersResult
+    in (Model weights, evalScore)
+
+
+
+-- | Default implementaiton for learning to rank (using Ranking and exact MAP)
 learnToRank :: forall f s query docId. (Ord query, Show query, Show docId, Show f)
             => MiniBatchParams
             -> ConvergenceCriterion f s
@@ -218,8 +288,9 @@ learnToRank miniBatchParams convergence evalCutoff franking fspace metric gen0 =
         iters =
             let optimise gen w trainData =
                     map snd $ coordAscent evalCutoff metric gen w trainData
+            -- # ToDo specialize miniBatchedAndEvaluated to work with HashedRankings        
             in miniBatchedAndEvaluated miniBatchParams
-                 metric optimise gen0 weights0 franking
+                 metric produceRankingsForEval optimise gen0 weights0 franking
         errorDiag = show weights0 ++ ". Size training queries: "++ show (M.size franking)++ "."
         checkNans (_,_) (b,_)
            | isNaN b = error $ "Metric score is NaN. initial weights " ++ errorDiag
@@ -258,13 +329,13 @@ rerankRankings :: Model f s
                -> M.Map Run.QueryId [(QRel.DocumentName, FeatureVec f s Double)]
                -> M.Map Run.QueryId (Ranking Score QRel.DocumentName)
 rerankRankings model featureData  =
-    fmap (rerank (modelWeights' model)) featureData
+    fmap (Ranking.fromList . SimplIR.LearningToRank.rescoreList (modelWeights' model)) featureData
 
 rerankRankings' :: Model f s
                 -> M.Map q [(docId, FeatureVec f s Double, rel)]
                 -> M.Map q (Ranking Score (docId, rel))
 rerankRankings' model featureData  =
-    fmap (rerank (modelWeights' model) . rearrangeTuples) featureData
+    fmap (Ranking.fromList . SimplIR.LearningToRank.rescoreList (modelWeights' model) . rearrangeTuples) featureData
   where rearrangeTuples = (fmap (\(d,f,r)-> ((d,r), f)))
 
 untilConverged :: (a -> a -> Bool) -> [a] -> [a]

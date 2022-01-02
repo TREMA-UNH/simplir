@@ -41,7 +41,7 @@ notLatin1Letters :: CS.CharSet
 notLatin1Letters = CS.complement (CSC.letter `CS.intersection` CSC.latin1)
 
 tokenise :: T.Text -> [T.Text]
-tokenise = T.words . killCharSet notLatin1Letters . T.toCaseFold
+tokenise t = T.words $ killCharSet notLatin1Letters $ T.toCaseFold t
 
 tokeniseWithPositions :: T.Text -> [(T.Text, Position)]
 tokeniseWithPositions t@(T.I.Text _ _ len) = unfoldr f (0,0,0,0)
