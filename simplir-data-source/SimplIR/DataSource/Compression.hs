@@ -16,6 +16,9 @@ import qualified Data.Text as T
 import           Control.Monad.Catch
 
 import           Pipes
+import           Pipes.Safe (MonadSafe)
+import           Pipes.ByteString as P.BS
+import qualified Pipes.BZip as P.BZip
 import qualified Pipes.GZip as P.GZip
 import qualified Pipes.Lzma as P.Lzma
 
@@ -25,12 +28,12 @@ data Compression = GZip   -- ^ e.g. @file.gz@
                  | Lzma   -- ^ e.g. @file.xz@
                  deriving (Show, Ord, Eq)
 
-decompress :: (MonadThrow m, MonadIO m)
+decompress :: (MonadThrow m, MonadSafe m)
            => Maybe Compression
-           -> Producer ByteString m a -> Producer ByteString m a
+           -> Producer ByteString m () -> Producer ByteString m ()
 decompress Nothing      = id
 decompress (Just GZip)  = decompressGZip
-decompress (Just BZip2) = error "decompress: BZip2 not supported"
+decompress (Just BZip2) = P.BZip.bunzip2
 decompress (Just Lzma)  = join . P.Lzma.decompress
 
 decompressGZip :: MonadIO m
@@ -52,8 +55,8 @@ detectCompression s
   | "BZh" `BS.isPrefixOf` s      = Just BZip2
   | otherwise                    = Nothing
 
-decompressed :: (MonadThrow m, MonadIO m)
-             => Producer ByteString m a -> Producer ByteString m a
+decompressed :: (MonadThrow m, MonadSafe m)
+             => Producer ByteString m () -> Producer ByteString m ()
 decompressed prod0 = do
     res <- lift $ next prod0
     case res of
@@ -68,5 +71,5 @@ guessCompression :: T.Text            -- ^ file name
 guessCompression name
   | ".gz" `T.isSuffixOf` name  = Just GZip
   | ".xz" `T.isSuffixOf` name  = Just Lzma
-  | ".bz2" `T.isSuffixOf` name = error "parseDataSource: bzip2 not implemented"
+  | ".bz2" `T.isSuffixOf` name = Just BZip2
   | otherwise                  = Nothing

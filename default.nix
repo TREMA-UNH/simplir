@@ -62,6 +62,7 @@ let
         text-icu   = dontCheck super.text-icu;
         pipes-zlib = doJailbreak super.pipes-zlib;
         pipes-text = doJailbreak (super.callHackage "pipes-text" "0.0.2.5" {});
+        pipes-bzip = dontCheck (doJailbreak (super.callHackage "pipes-bzip" "0.2.0.4" { bzlib = null; }));
         pipes-lzma = doJailbreak (super.callHackage "pipes-lzma" "0.2.0.0" {});
         pipes-interleave = doJailbreak (super.callHackage "pipes-interleave" "1.1.3" {});
         html-parse = self.callCabal2nix "html-parse" ./vendor/html-parse {};
