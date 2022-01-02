@@ -13,7 +13,7 @@ import qualified Data.HashSet as HS
 stopWordDir :: FilePath
 stopWordDir = "data"
 
-readStopWords :: FilePath -> Q (TExp (HS.HashSet T.Text))
-readStopWords fname = do
+readStopWords :: FilePath -> Code Q (HS.HashSet T.Text)
+readStopWords fname = liftCode $ do
     stopwords <- runIO $ readFile $ stopWordDir </> fname
-    [e|| HS.fromList $ T.lines $ T.pack $$(unsafeTExpCoerce $ lift $ stopwords) ||]
+    examineCode [e|| HS.fromList $ T.lines $ T.pack $$(liftTyped $ stopwords) ||]

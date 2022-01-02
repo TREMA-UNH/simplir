@@ -59,7 +59,10 @@ localFile = DataSourceParser parse
       = Just $ DataSource ("file://"<>t) (run $ T.unpack t)
 
     run path =
-        bracket (liftIO $ openFile path ReadMode) (liftIO . hClose) P.BS.fromHandle
+        bracket
+          (liftIO $ openFile path ReadMode)
+          (\hdl -> liftIO $ hClose hdl)
+          (\hdl -> P.BS.fromHandle hdl)
 
 dataLocationReadM :: DataSourceParser m -> ReadM (DataSource m)
 dataLocationReadM p = do

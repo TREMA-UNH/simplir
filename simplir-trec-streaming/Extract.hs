@@ -70,7 +70,7 @@ takeDocuments docs = go
       | docName `S.member` docs = val : go bs'
       | otherwise = go bs'
       where
-        (bs', val) = either error id $ Pinch.deserializeValue' Pinch.binaryProtocol bs
+        (bs', val) = either error id $ Pinch.decodeWithLeftovers Pinch.binaryProtocol bs
         item = either error id $ Pinch.runParser (parseStreamItem val)
         docName = DocName (Utf8.fromText $ Kba.getDocumentId $ Kba.documentId item)
 
