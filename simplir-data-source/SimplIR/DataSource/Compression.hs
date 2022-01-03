@@ -8,7 +8,7 @@ module SimplIR.DataSource.Compression
     , hGetContentsCompressed
       -- * Pipes-based interface
     , decompressed
-    , decompress
+    , decompressWith
       -- * Utilities
     , guessCompressionFromFileName
     , detectCompression
@@ -48,7 +48,7 @@ readCompressedFile path =
 -- | default method for reading streams with as-needed decompression (from a handle instead of a filename)
 hGetContentsCompressed :: Handle -> IO BSL.ByteString
 hGetContentsCompressed hdl =
-    runSafeT $ fmap BSL.fromChunks $ go $ decompress Nothing (P.BS.fromHandle hdl)
+    runSafeT $ fmap BSL.fromChunks $ go $ decompressed (P.BS.fromHandle hdl)
   where
     go :: Producer BS.ByteString (SafeT IO) () -> SafeT IO [BS.ByteString]
     go (P.Pure ()) = liftIO (hClose hdl) >> return []
@@ -58,14 +58,15 @@ hGetContentsCompressed hdl =
         rest <- liftBaseWith $ \run -> unsafeInterleaveIO $ run $ go $ k ()
         return $ bs : rest
 
-
-decompress :: (MonadThrow m, MonadSafe m)
-           => Maybe Compression
-           -> Producer ByteString m () -> Producer ByteString m ()
-decompress Nothing      = id
-decompress (Just GZip)  = decompressGZip
-decompress (Just BZip2) = P.BZip.bunzip2
-decompress (Just Lzma)  = join . P.Lzma.decompress
+-- | Decompress a stream with the given 'Compression' scheme.
+decompressWith
+    :: (MonadThrow m, MonadSafe m)
+    => Maybe Compression
+    -> Producer ByteString m () -> Producer ByteString m ()
+decompressWith Nothing      = id
+decompressWith (Just GZip)  = decompressGZip
+decompressWith (Just BZip2) = P.BZip.bunzip2
+decompressWith (Just Lzma)  = join . P.Lzma.decompress
 
 decompressGZip :: MonadIO m
                => Producer ByteString m r
@@ -78,14 +79,7 @@ decompressGZip = go
             Left prod' -> go prod'
             Right r    -> return r
 
--- | Determine how a bit of data is compressed given some of its header.
-detectCompression :: ByteString -> Maybe Compression
-detectCompression s
-  | "7zXZ" `BS.isPrefixOf` s     = Just Lzma
-  | "\x1f\x8b" `BS.isPrefixOf` s = Just GZip
-  | "BZh" `BS.isPrefixOf` s      = Just BZip2
-  | otherwise                    = Nothing
-
+-- | Decompress a stream, determining the compression scheme via the header.
 decompressed :: (MonadThrow m, MonadSafe m)
              => Producer ByteString m () -> Producer ByteString m ()
 decompressed prod0 = do
@@ -93,8 +87,16 @@ decompressed prod0 = do
     case res of
       Right (bs0, rest) -> do
           let compression = detectCompression bs0
-          decompress compression (yield bs0 >> rest)
+          decompressWith compression (yield bs0 >> rest)
       Left r -> return r
+
+-- | Determine how a bit of data is compressed given some of its header.
+detectCompression :: ByteString -> Maybe Compression
+detectCompression s
+  | "7zXZ" `BS.isPrefixOf` s     = Just Lzma
+  | "\x1f\x8b" `BS.isPrefixOf` s = Just GZip
+  | "BZh" `BS.isPrefixOf` s      = Just BZip2
+  | otherwise                    = Nothing
 
 -- | Try to identify the compression method of a file. 
 -- | It is recomended to use `detectcCompression` instead.
