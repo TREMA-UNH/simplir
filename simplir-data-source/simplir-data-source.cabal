@@ -15,6 +15,8 @@ library
   exposed-modules:     SimplIR.DataSource
                        SimplIR.DataSource.Internal
                        SimplIR.DataSource.Compression
+                       SimplIR.DataSource.Compression.Pipes
+                       SimplIR.DataSource.Compression.Lazy
                        SimplIR.DataSource.Gpg
   other-extensions:    OverloadedStrings, FlexibleContexts
   build-depends:       base >=4.9 && <5,
@@ -24,6 +26,9 @@ library
                        optparse-applicative >=0.14 && <0.16,
                        pipes >=4.3 && <4.5,
                        pipes-safe >=2.2 && <2.4,
+                       zlib,
+                       lzma,
+                       bz2,
                        pipes-zlib >=0.4 && <0.5,
                        pipes-lzma,
                        pipes-bytestring >=2.1 && <2.2,
