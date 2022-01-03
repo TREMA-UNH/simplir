@@ -9,9 +9,9 @@ module SimplIR.RetrievalModels.TfIdf
     
     -- * TF-IDF variants:
     , tfIdf_log_tf_smoothed_idf
-    -- ^ log tf / smoothed idf
+    -- ** @log tf / smoothed idf@
     , tfIdf_raw_tf_smoothed_idf
-    -- ^ raw tf / smoothed idf
+    -- ** @raw tf / smoothed idf@
     ) where
 
 import Data.Maybe
