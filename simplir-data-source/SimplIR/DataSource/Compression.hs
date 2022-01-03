@@ -3,9 +3,6 @@
 module SimplIR.DataSource.Compression
     ( -- * Compression schemes
       Compression(..)
-      -- * Lazy 'BSL.ByteString' interface
-    , readCompressedFile
-    , hGetContentsCompressed
       -- * Pipes-based interface
     , decompressed
     , decompressWith
@@ -20,9 +17,6 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.Text as T
 import           Control.Monad.Catch
-import           System.IO
-import           System.IO.Unsafe (unsafeInterleaveIO)
-import           Control.Monad.Trans.Control ( MonadBaseControl(liftBaseWith) )
 
 import           Pipes
 import qualified Pipes.Internal as P
@@ -39,25 +33,6 @@ data Compression = GZip   -- ^ e.g. @file.gz@
                  deriving (Show, Ord, Eq)
 
 
--- | default method for reading files with as-needed decompression. 
-readCompressedFile :: FilePath -> IO BSL.ByteString
-readCompressedFile path =
-    openFile path ReadMode >>= hGetContentsCompressed
-
-
--- | default method for reading streams with as-needed decompression (from a handle instead of a filename)
-hGetContentsCompressed :: Handle -> IO BSL.ByteString
-hGetContentsCompressed hdl =
-    runSafeT $ fmap BSL.fromChunks $ go $ decompressed (P.BS.fromHandle hdl)
-  where
-    go :: Producer BS.ByteString (SafeT IO) () -> SafeT IO [BS.ByteString]
-    go (P.Pure ()) = liftIO (hClose hdl) >> return []
-    go (P.M k) = k >>= go
-    go (P.Request _ _) = error "hGetCompressed: impossible"
-    go (P.Respond bs k) = do
-        rest <- liftBaseWith $ \run -> unsafeInterleaveIO $ run $ go $ k ()
-        return $ bs : rest
-
 -- | Decompress a stream with the given 'Compression' scheme.
 decompressWith
     :: (MonadThrow m, MonadSafe m)
@@ -65,8 +40,18 @@ decompressWith
     -> Producer ByteString m () -> Producer ByteString m ()
 decompressWith Nothing      = id
 decompressWith (Just GZip)  = decompressGZip
-decompressWith (Just BZip2) = P.BZip.bunzip2
+decompressWith (Just BZip2) = decompressBZip2
 decompressWith (Just Lzma)  = join . P.Lzma.decompress
+
+decompressBZip2
+    :: (MonadThrow m, MonadSafe m)
+    => Producer ByteString m () -> Producer ByteString m ()
+decompressBZip2 = P.BZip.decompress params
+  where
+    params = P.BZip.DecompressParams
+        { P.BZip.dpVerbosity = 0
+        , P.BZip.dpSmall = False
+        }
 
 decompressGZip :: MonadIO m
                => Producer ByteString m r
@@ -107,3 +92,4 @@ guessCompressionFromFileName name
   | ".xz" `T.isSuffixOf` name  = Just Lzma
   | ".bz2" `T.isSuffixOf` name = Just BZip2
   | otherwise                  = Nothing
+
