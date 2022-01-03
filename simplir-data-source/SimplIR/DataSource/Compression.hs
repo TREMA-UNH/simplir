@@ -5,7 +5,7 @@ module SimplIR.DataSource.Compression
       Compression(..)
       -- * Lazy 'BSL.ByteString' interface
     , readCompressedFile
-    , hGetCompressed
+    , hGetContentsCompressed
       -- * Pipes-based interface
     , decompressed
     , decompress
@@ -42,16 +42,16 @@ data Compression = GZip   -- ^ e.g. @file.gz@
 -- | default method for reading files with as-needed decompression. 
 readCompressedFile :: FilePath -> IO BSL.ByteString
 readCompressedFile path =
-    withFile path ReadMode hGetCompressed
+    openFile path ReadMode >>= hGetContentsCompressed
 
 
 -- | default method for reading streams with as-needed decompression (from a handle instead of a filename)
-hGetCompressed :: Handle -> IO BSL.ByteString
-hGetCompressed hdl =
+hGetContentsCompressed :: Handle -> IO BSL.ByteString
+hGetContentsCompressed hdl =
     runSafeT $ fmap BSL.fromChunks $ go $ decompress Nothing (P.BS.fromHandle hdl)
   where
     go :: Producer BS.ByteString (SafeT IO) () -> SafeT IO [BS.ByteString]
-    go (P.Pure ()) = return []
+    go (P.Pure ()) = liftIO (hClose hdl) >> return []
     go (P.M k) = k >>= go
     go (P.Request _ _) = error "hGetCompressed: impossible"
     go (P.Respond bs k) = do
