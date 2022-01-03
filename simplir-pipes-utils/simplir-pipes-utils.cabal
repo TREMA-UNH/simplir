@@ -23,9 +23,11 @@ library
                        vector,
                        primitive,
                        containers,
+                       directory,
                        unordered-containers,
                        hashable,
                        pipes,
+                       pipes-safe,
                        pipes-bytestring,
                        aeson,
                        foldl
