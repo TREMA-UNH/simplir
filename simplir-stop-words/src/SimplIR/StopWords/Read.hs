@@ -23,5 +23,5 @@ readStopWords fname = liftCode $ do
 readStopWords :: FilePath -> Q (TExp (HS.HashSet T.Text))
 readStopWords fname = do
     stopwords <- runIO $ readFile $ stopWordDir </> fname
-    [e|| HS.fromList $ T.lines $ T.pack $$(liftTyped $ stopwords) ||]
+    [e|| HS.fromList $ T.lines $ T.pack $$(unsafeTExpCoerce $ lift $ stopwords) ||]
 #endif

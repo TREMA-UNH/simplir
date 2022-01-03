@@ -31,7 +31,7 @@ library
                        time >=1.6 && <1.14,
                        pinch >=0.3 && <0.5,
                        binary,
-                       aeson >=1.0 && <1.5,
+                       aeson >=1.0 && <1.6,
                        yaml,
                        hashable,
                        attoparsec,

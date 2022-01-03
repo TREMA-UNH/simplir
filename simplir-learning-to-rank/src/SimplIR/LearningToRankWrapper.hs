@@ -136,7 +136,7 @@ instance (Aeson.FromJSONKey k, Aeson.FromJSON v) => Aeson.FromJSON (Assocs k v) 
                 flip (Aeson.withObject "association list") v $ (fmap Assocs . mapM (fromKV (pure . f)) . HM.toList)
             Aeson.FromJSONKeyTextParser f ->
                 flip (Aeson.withObject "association list") v $ (fmap Assocs . mapM (fromKV f) . HM.toList)
-            Aeson.FromJSONKeyCoerce _ ->
+            Aeson.FromJSONKeyCoerce ->
                 flip (Aeson.withObject "association list") v $ (fmap Assocs . mapM (fromKV (pure . unsafeCoerce)) .HM.toList)
         where
             fromKV :: (T.Text -> Aeson.Parser k) -> (T.Text, Aeson.Value) -> Aeson.Parser (k, v)
