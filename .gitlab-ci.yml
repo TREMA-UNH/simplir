@@ -12,6 +12,7 @@ before_script:
         nix-store --import < ./cache.nar || true
     fi
 
+  - |
     nix-env -iA git -f '<nixpkgs>'
     nix-env -iA cachix -f https://github.com/NixOS/nixpkgs/tarball/db557aab7b690f5e0e3348459f2e4dc8fd0d9298
 
@@ -33,7 +34,8 @@ before_script:
     EOF
 
 validate:
-  image: nixos/nix
+  # Use 2.3.12 due to https://github.com/NixOS/nix/issues/5797
+  image: nixos/nix:2.3.12
   script:
     - nix-build . -A env --cores 1 -j $THREADS | cachix push trec-car-tools
     - nix-store --export $(nix-store -qR ./result) > ./cache.nar
