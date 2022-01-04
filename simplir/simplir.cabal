@@ -73,7 +73,7 @@ library
       errors >=2.0 && <2.4,
       exceptions >= 0.8,
       text >=1.2 && <2.1,
-      aeson,
+      aeson >= 1.2 && <2.0,
       trifecta >= 1.5,
       containers >=0.5 && <0.7,
       case-insensitive >=1.2 && <1.3,

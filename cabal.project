@@ -1,16 +1,12 @@
 allow-newer:
             base, transformers, ghc-boot, template-haskell, time, bytestring,
             lens,
-            pipes,
-            aeson
+            pipes
 
 packages:
     simplir/*.cabal
     simplir-*/*.cabal
     vendor/*/*.cabal
-
-constraints:
-    pipes-safe == 2.2.5
 
 profiling-detail: exported-functions
 flags: -test-doctests
