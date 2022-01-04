@@ -60,6 +60,7 @@ let
         lzma = dontCheck super.lzma;
         ListLike = doJailbreak super.ListLike;
         text-icu   = dontCheck super.text-icu;
+        streaming-commons = dontCheck super.streaming-commons;
         pipes-zlib = doJailbreak super.pipes-zlib;
         pipes-text = doJailbreak (super.callHackage "pipes-text" "0.0.2.5" {});
         pipes-lzma = doJailbreak (super.callHackage "pipes-lzma" "0.2.0.0" {});
