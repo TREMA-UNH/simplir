@@ -477,7 +477,7 @@ findPhrases phrases terms =
     trie = Trie.fromList $ map (\x -> (x,x)) phrases
     mergeMatches :: ([(Term, Position)], [Term]) -> ([Term], Position)
     mergeMatches (matchedTerms, phrase) =
-        (phrase, fromMaybe (error "findPhrases: Empty phrase") $ getOption $ foldMap (Option . Just . snd) matchedTerms)
+        (phrase, fromMaybe (error "findPhrases: Empty phrase") $  foldMap (Just . snd) matchedTerms)
 
 newtype DocumentFrequency = DocumentFrequency Int
                           deriving (Show, Eq, Ord, Binary)

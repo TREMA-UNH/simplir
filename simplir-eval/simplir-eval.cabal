@@ -33,7 +33,7 @@ executable simplir-eval
   -- other-modules:
   build-depends:       base >=4.10 && <5,
                        containers >=0.5 && <0.7,
-                       optparse-applicative >=0.14 && <0.16,
+                       optparse-applicative >=0.14 && <0.17,
                        simplir,
                        simplir-io,
                        simplir-eval

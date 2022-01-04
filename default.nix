@@ -8,7 +8,7 @@ let
 
   localDir = nixpkgs.nix-gitignore.gitignoreSourcePure [ ./.gitignore ];
 
-  trec-eval = nixpkgs.enableDebugging (nixpkgs.callPackage ./trec-eval.nix {});
+  trec-eval = nixpkgs.callPackage ./trec-eval.nix {};
 
   all-cabal-hashes =
     let
@@ -60,6 +60,7 @@ let
         lzma = dontCheck super.lzma;
         ListLike = doJailbreak super.ListLike;
         text-icu   = dontCheck super.text-icu;
+        streaming-commons = dontCheck super.streaming-commons;
         pipes-zlib = doJailbreak super.pipes-zlib;
         pipes-text = doJailbreak (super.callHackage "pipes-text" "0.0.2.5" {});
         pipes-bzip = dontCheck (doJailbreak (super.callHackage "pipes-bzip" "0.2.0.4" { bzlib = null; }));
@@ -67,17 +68,12 @@ let
         pipes-interleave = doJailbreak (super.callHackage "pipes-interleave" "1.1.3" {});
         html-parse = self.callCabal2nix "html-parse" ./vendor/html-parse {};
         b-tree = doJailbreak (self.callHackage "b-tree" "0.1.4" {});
-        log-domain = self.callCabal2nix "log-domain" (fetchFromGitHub {
-          owner = "ekmett";
-          repo = "log-domain";
-          rev = "f0b5e8528965ba1cf8a2f47ea8b2750285914b6d";
-          sha256 = "0d46bkymf8sz01cq4pizrs5dn0xn5yd3chqgczbad4yaqjridjl7";
-        }) {};
-        warc = self.callCabal2nix "warc" (fetchFromGitHub {
-          owner = "bgamari";
+        warc = self.callCabal2nix "warc" (nixpkgs.fetchFromGitLab {
+          domain = "git.smart-cactus.org";
+          owner = "ben";
           repo = "warc";
-          rev = "76ce71f4e5e0bb51ea22c1210215ec194e33b442";
-          sha256 = "1p3zmyhrrj44bj9l5zrcw34bzkqg12g94nbb4q5d9l8dirg837j6";
+          rev = "3c052804e4f17bf76f2d24c565e7ab975b0ad7e1";
+          sha256 = "sha256:027b3zjvrav7qbjgn40xkdacv62745y8n0krwkwdkhqs577rznfs";
         }) {};
 
         pinch = self.callCabal2nix "pinch" ./vendor/pinch {};
@@ -85,7 +81,7 @@ let
       };
     in otherOverrides // simplirPackages // { simplirPackages = simplirPackages; };
 
-  ghcVersion = "ghc883";
+  ghcVersion = "ghc8107";
   haskellPackages = nixpkgs.haskell.packages."${ghcVersion}".override {
     inherit all-cabal-hashes;
     overrides = haskellOverrides;

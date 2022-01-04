@@ -16,7 +16,7 @@ module SimplIR.Bag
     ) where
 
 import Data.Hashable
-import Data.List
+import Data.List (sortBy)
 import Data.Ord
 import Data.Tuple
 import Data.Semigroup
