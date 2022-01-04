@@ -12,11 +12,13 @@ import SimplIR.Progress
 import Data.Monoid(Sum(..))
 import Prelude hiding (readFile)
 
+
 readFile :: FilePath -> IO BSL.ByteString
 readFile fpath = do
     hdl <- openFile fpath ReadMode
     hGetContents hdl
 
+-- | Gets contents from a stream and prints progress information every 30 seconds.
 hGetContents :: Handle -> IO BSL.ByteString
 hGetContents hdl = do
     bsl <- BSL.hGetContents hdl
