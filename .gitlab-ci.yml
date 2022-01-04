@@ -12,26 +12,11 @@ before_script:
         nix-store --import < ./cache.nar || true
     fi
 
-  - |
-    nix-env -iA git -f '<nixpkgs>'
-    nix-env -iA cachix -f https://github.com/NixOS/nixpkgs/tarball/db557aab7b690f5e0e3348459f2e4dc8fd0d9298
-
-    mkdir -p $HOME/.config/nix
-    cat > $HOME/.config/nix/nix.conf <<EOF
-    substituters = https://cache.nixos.org https://trec-car-tools.cachix.org
-    trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= trec-car-tools.cachix.org-1:SA3ysx4pH3AUN9DkvJK0Ungs5ZrS8N/aPYVieefuzok=
-    EOF
-
-    mkdir -p $HOME/.config/cachix
-    cat > $HOME/.config/cachix/config.dhall <<EOF
-    { authToken = $CACHIX_AUTH_TOKEN
-    , binaryCaches =
-        [ { name = "trec-car-tools"
-          , secretKey = $CACHIX_SECRET_KEY
-          }
-        ] : List { name : Text, secretKey : Text }
-    }
-    EOF
+  - nix-env -iA git -f '<nixpkgs>'
+  - nix-env -iA cachix -f '<nixpkgs>'
+  - cachix use trec-car-tools
+  - cachix authtoken $CACHIX_AUTH_TOKEN
+  - nix-build '<nixpkgs>' -A hello | cachix push trec-car-tools
 
 validate:
   # Use 2.3.12 due to https://github.com/NixOS/nix/issues/5797
