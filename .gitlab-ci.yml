@@ -18,7 +18,7 @@ before_script:
     mkdir -p $HOME/.config/nix
     cat > $HOME/.config/nix/nix.conf <<EOF
     substituters = https://cache.nixos.org https://trec-car-tools.cachix.org
-    trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= trec-car-tools.cachix.org-1:zlHkXRIQit3P6UdWD/tC7rHI4OmorVE/e2d9HcE80dQ=
+    trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= trec-car-tools.cachix.org-1:SA3ysx4pH3AUN9DkvJK0Ungs5ZrS8N/aPYVieefuzok=
     EOF
 
     mkdir -p $HOME/.config/cachix
