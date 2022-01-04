@@ -12,20 +12,24 @@ build-type:          Simple
 cabal-version:       >=1.10
 
 library
-  exposed-modules:     SimplIR.Pipes.Progress,
-                       SimplIR.Pipes.Utils
-                       Control.Foldl.Map
-                       Control.Foldl.HashMap
-                       Control.Foldl.Vector
+  exposed-modules:     SimplIR.Progress,
+                       SimplIR.Pipes.Progress,
+                       SimplIR.Pipes.Utils,
+                       Control.Foldl.Map,
+                       Control.Foldl.HashMap,
+                       Control.Foldl.Vector,
+                       Data.ByteString.Lazy.Progress
   other-extensions:    RankNTypes, OverloadedStrings, BangPatterns
   build-depends:       base >=4.11 && <4.17,
                        bytestring >=0.10 && <0.12,
                        vector,
                        primitive,
                        containers,
+                       directory,
                        unordered-containers,
                        hashable,
                        pipes,
+                       pipes-safe,
                        pipes-bytestring,
                        aeson,
                        foldl

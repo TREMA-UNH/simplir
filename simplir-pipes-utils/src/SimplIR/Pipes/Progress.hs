@@ -1,32 +1,44 @@
 module SimplIR.Pipes.Progress
-   ( ProgressVar
-   , newProgressVar
-   , progressPipe
-   , pollProgress
-   ) where
+    ( ProgressVar
+    , newProgressVar
+    , progressPipe
+    , pollProgress
+    , finished
+    , withFileProgress
+    ) where
 
-import Data.IORef
-import Control.Monad (forever, void)
-import Control.Concurrent (forkIO, threadDelay)
-import Pipes
+import           Control.Applicative
+import qualified Data.ByteString as BS
+import           Pipes
 import qualified Pipes.Prelude as PP
-
-data ProgressVar a = ProgressVar (IORef a)
-
-newProgressVar :: Monoid a => IO (ProgressVar a)
-newProgressVar = ProgressVar <$> newIORef mempty
-
-pollProgress :: ProgressVar a -> Float -> (a -> String) -> IO ()
-pollProgress (ProgressVar var) period toMesg = void $ forkIO $ forever $ do
-    x <- readIORef var
-    putStrLn $ toMesg x
-    threadDelay $ round $ period * 1000 * 1000
+import           Pipes.Safe
+import qualified Pipes.ByteString as P.BS
+import           System.IO
+import           Data.Monoid
+import           SimplIR.Progress
 
 progressPipe :: (Monoid a, MonadIO m)
-             => ProgressVar a -> (b -> a)
+             => ProgressVar a
+             -> (b -> a)
              -> Pipe b b m r
-progressPipe (ProgressVar var) f = PP.mapM step
+progressPipe var f = PP.mapM step
   where
     step x = do
-        liftIO $ atomicModifyIORef var $ \acc -> (acc `mappend` f x, ())
+        addProgress var (f x)
         return x
+
+withFileProgress :: (MonadIO m, MonadSafe n)
+                 => Handle
+                 -> (Producer BS.ByteString m () -> n r)
+                 -> n r
+withFileProgress hdl k = do
+    var <- liftIO newProgressVar
+    sz <- liftIO $ hGetSize hdl
+    let render (Sum n) = progressMessage 80 sz n
+    liftIO $ pollProgress var 30 render
+    register $ finished var
+    r <- k (P.BS.fromHandle hdl >-> progressPipe var (Sum . fromIntegral . BS.length))
+    return r
+
+hGetSize :: Handle -> IO (Maybe Integer)
+hGetSize hdl = fmap Just (hFileSize hdl) <|> return Nothing
