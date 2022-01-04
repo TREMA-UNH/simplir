@@ -10,7 +10,7 @@ import qualified Data.ByteString.Lazy as BS.L
 import qualified Pipes.ByteString as P.BS
 import qualified Data.Text as T
 import SimplIR.DataSource as DataSource
-import SimplIR.DataSource.Compression
+import SimplIR.DataSource.Compression.Pipes
 import qualified SimplIR.DataSource.Gpg as Gpg
 
 readKbaFile :: (MonadSafe m, MonadBaseControl IO m, MonadFail m)
