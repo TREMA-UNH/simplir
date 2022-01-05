@@ -1,7 +1,5 @@
 allow-newer:
-            base, transformers, ghc-boot, template-haskell, time, bytestring,
-            lens,
-            pipes
+    base
 
 packages:
     simplir/*.cabal
