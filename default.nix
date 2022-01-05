@@ -76,7 +76,12 @@ let
           sha256 = "sha256:027b3zjvrav7qbjgn40xkdacv62745y8n0krwkwdkhqs577rznfs";
         }) {};
 
-        pinch = self.callCabal2nix "pinch" ./vendor/pinch {};
+        pinch = doJailbreak (dontCheck (self.callCabal2nix "pinch" (nixpkgs.fetchFromGitHub {
+          owner = "abhinav";
+          repo = "pinch";
+          rev = "b8516191d7ed87231794471cee03f9c842e60578";
+          sha256 = "sha256:0iy85wxava4pn2hnrcw0p4vgbwndx95ilirk05zi6p30z17dn0yr";
+        }) {}));
         pipes-safe = self.callHackage "pipes-safe" "2.3.1" {};
       };
     in otherOverrides // simplirPackages // { simplirPackages = simplirPackages; };
