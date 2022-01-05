@@ -61,7 +61,7 @@ let
         ListLike = doJailbreak super.ListLike;
         text-icu   = dontCheck super.text-icu;
         streaming-commons = dontCheck super.streaming-commons;
-        pipes-zlib = doJailbreak super.pipes-zlib;
+        pipes-zlib = self.callCabal2nix "pipes-zlib" ./vendor/pipes-zlib {};
         pipes-text = doJailbreak (super.callHackage "pipes-text" "0.0.2.5" {});
         pipes-bzip = dontCheck (doJailbreak (super.callHackage "pipes-bzip" "0.2.0.4" { bzlib = null; }));
         pipes-lzma = doJailbreak (super.callHackage "pipes-lzma" "0.2.0.0" {});
